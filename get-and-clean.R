@@ -1,5 +1,11 @@
 library("tm")
 
+ReadAndCleanCorpus <- function(path, prob=0.01) {
+    lines <- ReadSomeLines(path, prob)
+    corpus <- CreateCorpus(lines)
+    return (CleanCorpus(corpus))
+}
+
 ReadSomeLines <- function(path, prob=0.01) {
     con <- file(path, "r")
     result <- vector("numeric")
@@ -13,8 +19,6 @@ ReadSomeLines <- function(path, prob=0.01) {
 }
 
 CreateCorpus <- function(lines) VCorpus(VectorSource(lines))
-
-removeByPattern <- content_transformer(function(x, pattern) gsub(pattern, " ", x))
 
 CleanCorpus <- function(corpus) {
     getTransformations()
@@ -34,11 +38,12 @@ CleanCorpus <- function(corpus) {
     close(con)
     result <- tm_map(result, removeWords, swear.words)
     # Remove URLs
-    result <- tm_map(result, removeByPattern, "(ht|f)tps?://([\\da-z\\.-]+)\\.([a-z\\.]{2,6})([/\\w \\.-]*)*/?")
+    result <- tm_map(result, RemoveByPattern, "(ht|f)tps?://([\\da-z\\.-]+)\\.([a-z\\.]{2,6})([/\\w \\.-]*)*/?")
     # Remove emails
-    result <- tm_map(result, removeByPattern, "([a-z0-9_\\.-]+)@([a-z0-9_\\.-]+)\\.([a-z\\.]{2,6})")
+    result <- tm_map(result, RemoveByPattern, "([a-z0-9_\\.-]+)@([a-z0-9_\\.-]+)\\.([a-z\\.]{2,6})")
     # Remove accounts
-    result <- tm_map(result, removeByPattern, "@[^\\s]+")
+    result <- tm_map(result, RemoveByPattern, "@[^\\s]+")
     return (tm_map(result, stripWhitespace))
 }
 
+RemoveByPattern <- content_transformer(function(x, pattern) gsub(pattern, " ", x))

@@ -1,14 +1,18 @@
 library("tm")
 
-ReadAndCleanCorpus <- function(path, prob=0.01) {
-    lines <- ReadSomeLines(path, prob)
+ReadAndCleanCorpus <- function(dir, prob=0.001) {
+    files <- list.files(dir, pattern=".txt$", full.names=T)
+    lines <- character()
+    for (path in files) {
+        lines <- c(lines, ReadSomeLines(path, prob))
+    }
     corpus <- CreateCorpus(lines)
     return (CleanCorpus(corpus))
 }
 
-ReadSomeLines <- function(path, prob=0.01) {
+ReadSomeLines <- function(path, prob) {
     con <- file(path, "r")
-    result <- vector("numeric")
+    result <- numeric()
     while (length(line <- readLines(con, n=1, warn=F)) > 0) {
         if (rbinom(1, 1, prob) == 1) {
             result <- c(result, line)

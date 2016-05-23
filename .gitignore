@@ -12,6 +12,7 @@
 CLT_cache/
 rsconnect/
 .Rproj.user
+*_cache/
 
 # Data
 data/

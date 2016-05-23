@@ -2,7 +2,7 @@
 title: "Understand frequencies of words and word pairs"
 author: "Alexander Alexandrov"
 date: "Friday, May 06, 2016"
-output: html_document
+output: pdf_document
 ---
 
 The first step in building a predictive model for text is understanding the distribution and relationship between the words, tokens, and phrases in the text. The goal of this task is to understand the basic relationships you observe in the data and prepare to build your first linguistic models.
@@ -20,7 +20,24 @@ source("get-and-clean.R")
 ```
 
 Load and clean english corpus:
+```{r, cache=TRUE}
+set.seed(123)
+corpus <- ReadAndCleanCorpus("./data/en_US/", prob=0.001)
+```
+
+Compute term's frequencies:
 ```{r}
-corpus <- ReadAndCleanCorpus("./data/en_US/en_US.blogs.txt")
-corpus
+doc.term.matrix <- as.matrix(DocumentTermMatrix(corpus))
+term.freq <- colSums(doc.term.matrix)
+term.freq <- sort(term.freq, decreasing=TRUE)
+head(term.freq)
+```
+
+Show top100 terms:
+```{r, echo=FALSE}
+library(wordcloud)
+```
+
+```{r, warning=FALSE}
+wordcloud(names(term.freq)[1:100], term.freq[1:100])
 ```

@@ -13,6 +13,8 @@ CLT_cache/
 rsconnect/
 .Rproj.user
 *_cache/
+*_files/
 
-# Data
-data/
+# Raw data
+exploratory-analysis/input
+*.zip

@@ -1,0 +1,24 @@
+---
+title: "basic-modeling"
+author: "Alexander Alexandrov"
+date: "Friday, June 03, 2016"
+output: pdf_document
+---
+
+## Introduction
+
+The goal here is to build first simple model for the relationship between words. This is the first step in building a predictive text mining application.
+
+Tasks to accomplish:
+
+* Build basic n-gram model - using the exploratory analysis, build a basic n-gram model for predicting the next word based on the previous 1, 2, or 3 words.
+* Build a model to handle unseen n-grams - in some cases people will want to type a combination of words that does not appear in the corpora. Build a model to handle cases where a particular n-gram isn't observed.
+
+Questions to consider:
+
+1. How to efficiently store an n-gram model (Markov Chains)?
+2. How to use the knowledge about word frequencies to make model smaller and more efficient?
+3. How many parameters is really needed (i.e. how big is n in n-gram model)?
+4. Simple ways to "smooth" the probabilities (for example, giving all n-grams a non-zero probability even if they aren't observed in the data) ?
+5. How to evaluate whether model is any good?
+6. How to use *backoff* models to estimate the probability of unobserved n-grams?

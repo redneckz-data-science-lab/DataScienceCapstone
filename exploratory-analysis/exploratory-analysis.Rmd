@@ -1,0 +1,228 @@
+---
+title: "Understand frequencies of words and word pairs"
+author: "Alexander Alexandrov"
+date: "Friday, May 06, 2016"
+output: pdf_document
+---
+
+## Introduction
+
+The first step in building a predictive model for text is understanding the distribution and relationship between the words, tokens, and phrases in the text. The goal of this task is to understand the basic relationships observed in the data and prepare to build first linguistic models.
+
+Questions to consider:
+
+1. Some words are more frequent than others - what are the distributions of word frequencies?
+2. What are the frequencies of 2-grams and 3-grams in the dataset?
+3. How many unique words are needed in a frequency sorted dictionary to cover 50% of all word instances in the language? 90%?
+4. How to evaluate how many of the words come from foreign languages?
+5. A way to increase the coverage -- identifying words that may not be in the corpora or using a smaller number of words in the dictionary to cover the same number of phrases?
+
+## Downloading the Data
+
+```{r}
+if (!file.exists("./raw-data.zip")) {
+    download.file("https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip", destfile="./raw-data.zip", method="auto")
+}
+if (!file.exists("./input")) {
+    unzip("./raw-data.zip", files=c("final/en_US/en_US.blogs.txt", "final/en_US/en_US.news.txt", "final/en_US/en_US.twitter.txt"), exdir="input", junkpaths=T)
+}
+```
+
+## Sampling And Cleaning
+
+Following should be cleaned:
+
+1. punctation;
+2. numbers;
+3. stop wrods;
+4. profanity words;
+5. swear words;
+6. URLs, emails, accounts.
+
+```{r, echo=FALSE}
+library("tm")
+```
+```{r}
+ReadAndCleanCorpus <- function(dir, prob) {
+    files <- list.files(dir, pattern=".txt$", full.names=T)
+    lines <- character()
+    for (path in files) {
+        lines <- c(lines, ReadSomeLines(path, prob))
+    }
+    corpus <- VCorpus(VectorSource(lines))
+    return (CleanCorpus(corpus))
+}
+
+ReadSomeLines <- function(path, prob) {
+    con <- file(path, "r")
+    result <- numeric()
+    while (length(line <- readLines(con, n=1, warn=F)) > 0) {
+        if (rbinom(1, 1, prob) == 1) {
+            result <- c(result, line)
+        }
+    }
+    close(con)
+    return (result)
+}
+
+CleanCorpus <- function(corpus) {
+    getTransformations()
+    result <- tm_map(corpus, content_transformer(tolower))
+    result <- tm_map(result, removePunctuation)
+    result <- tm_map(result, removeNumbers)
+    # Remove english stop words (like the, a, an, etc)
+    result <- tm_map(result, removeWords, stopwords("english"))
+    # Remove profanity words
+    # http://www.freewebheaders.com/full-list-of-bad-words-banned-by-google/
+    con <- file("./bad-words-dict/bad-words-banned-by-google.txt", "r")
+    swear.words <- readLines(con, warn=F)
+    close(con)
+    # http://www.bannedwordlist.com/
+    con <- file("./bad-words-dict/swearWords.txt", "r")
+    swear.words <- c(swear.words, readLines(con, warn=F))
+    close(con)
+    result <- tm_map(result, removeWords, swear.words)
+    RemoveByPattern <- content_transformer(function(x, pattern) gsub(pattern, " ", x))
+    # Remove URLs
+    result <- tm_map(result, RemoveByPattern, "(ht|f)tps?://([\\da-z\\.-]+)\\.([a-z\\.]{2,6})([/\\w \\.-]*)*/?")
+    # Remove emails
+    result <- tm_map(result, RemoveByPattern, "([a-z0-9_\\.-]+)@([a-z0-9_\\.-]+)\\.([a-z\\.]{2,6})")
+    # Remove accounts
+    result <- tm_map(result, RemoveByPattern, "@[^\\s]+")
+    return (tm_map(result, stripWhitespace))
+}
+```
+```{r, cache=TRUE}
+set.seed(123)
+corpus <- ReadAndCleanCorpus("./input/", prob=0.05)
+```
+
+```{r}
+saveRDS(corpus, "./output/corpus.rds")
+```
+
+## N-Gram's Frequencies
+
+### Unigram's Frequencies
+
+```{r, echo=F}
+library(data.table)
+library(RWeka)
+library(ggplot2)
+```
+```{r}
+ToTermFreqTable <- function (term.doc.matrix) {
+    term.freq <- data.table(i=term.doc.matrix$i, v=term.doc.matrix$v)
+    term.freq <- term.freq[, list(freq=sum(v)), by=i]
+    term.freq <- term.freq[order(freq, decreasing=T)]
+    terms <- Terms(term.doc.matrix)
+    term.freq[, term:=terms[i]]
+    return(term.freq)
+}
+GetNGramsFreq <- function(corpus, n) {
+    tokenizer <- function(x) NGramTokenizer(x, Weka_control(min=n, max=n))
+    return(ToTermFreqTable(TermDocumentMatrix(corpus,
+                                              control=list(tokenize=tokenizer))))
+}
+DrawTopNGrams <- function(ngram.freq, top) {
+    top.ngram.freq <- head(ngram.freq, top)
+    top.ngram.freq$term <- reorder(top.ngram.freq$term, top.ngram.freq$freq)
+    ggplot(top.ngram.freq, aes(x=term, y=freq)) +
+            geom_bar(stat="identity") + coord_flip()
+}
+```
+
+```{r}
+top.word.count <- 30
+unigram.freq <- GetNGramsFreq(corpus, n=1)
+DrawTopNGrams(unigram.freq, top=top.word.count)
+```
+
+```{r}
+saveRDS(unigram.freq, "./output/unigram.freq.rds")
+```
+
+### 2-Gram's Frequencies
+
+```{r}
+gram2.freq <- GetNGramsFreq(corpus, n=2)
+DrawTopNGrams(gram2.freq, top=top.word.count)
+```
+
+```{r}
+saveRDS(gram2.freq, "./output/gram2.freq.rds")
+```
+
+### 3-Gram's Frequencies
+
+```{r}
+gram3.freq <- GetNGramsFreq(corpus, n=3)
+DrawTopNGrams(gram3.freq, top=top.word.count)
+```
+
+```{r}
+saveRDS(gram3.freq, "./output/gram3.freq.rds")
+```
+
+### 4-Gram's Frequencies
+
+```{r}
+gram4.freq <- GetNGramsFreq(corpus, n=4)
+DrawTopNGrams(gram4.freq, top=top.word.count)
+```
+
+```{r}
+saveRDS(gram4.freq, "./output/gram4.freq.rds")
+```
+
+## Corpora Coverage
+
+To make better predictions dictionary may be reduced and cleaned from very rare or occasional words and phrases. Lets draw how dictionary size impacts coverage.
+
+```{r}
+dictionary.total.size <- sum(unigram.freq$freq)
+dictionary.size.to.coverage <- cumsum(unigram.freq$freq * 100 / dictionary.total.size)
+plot(x=1:length(dictionary.size.to.coverage), y=dictionary.size.to.coverage,
+     type="l", main="Coverage", xlab="Dictionary Size (words)", ylab="Coverage (percent)")
+```
+
+It's evident from the plot that dictionary size has exponential dependency on coverage. In other words 100% converage is not the case. And smaller values of coverage should be considered to avoid overfitting.
+
+How many words covers **90%** of corpora?
+
+```{r}
+which(dictionary.size.to.coverage > 90)[[1]]
+```
+
+How many words covers **80%** of corpora?
+
+```{r}
+which(dictionary.size.to.coverage > 80)[[1]]
+```
+
+How many words covers **70%** of corpora?
+
+```{r}
+which(dictionary.size.to.coverage > 70)[[1]]
+```
+
+Also according to the http://www.oxforddictionaries.com/words/how-many-words-are-there-in-the-english-language:
+
+> The Second Edition of the 20-volume Oxford English Dictionary contains full entries for 171,476 words in current use...
+
+So effective coverage (language coverage) should be less then dictionary coverage for about `r round(171476 / dictionary.total.size, 1)` times.
+
+## Words From Foreign Languages
+
+How to evaluate how many of the words come from foreign languages?
+Filter based on some external/online dictionary could be useful. But I think this problem is related to the rare words, excluded from the dictionary to fit reasonable coverage.
+
+## Increasing the Coverage
+
+### Identifying Words Out of Corpora
+
+A way to increase the coverage - identifying words that may not be in the corpora.
+Some online service could help to estimate "real" term's frequencies and to estimate "effective" coverage. For example:
+
+* Microsoft Web N-gram
+* Google Ngram Viewer

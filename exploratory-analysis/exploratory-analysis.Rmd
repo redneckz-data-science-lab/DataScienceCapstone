@@ -1,5 +1,5 @@
 ---
-title: "Understand frequencies of words and word pairs"
+title: "Exploratory Data Analysis"
 author: "Alexander Alexandrov"
 date: "Friday, May 06, 2016"
 output: pdf_document
@@ -7,7 +7,24 @@ output: pdf_document
 
 ## Introduction
 
-The first step in building a predictive model for text is understanding the distribution and relationship between the words, tokens, and phrases in the text. The goal of this task is to understand the basic relationships observed in the data and prepare to build first linguistic models.
+Around the world, people are spending an increasing amount of time on their mobile devices for email, social networking, banking and a whole range of other activities. But typing on mobile devices can be a serious pain. Smart keyboard makes it easier for people to type on their mobile devices. One cornerstone of smart keyboard is predictive text models.
+
+When someone types:
+
+*I went to the*
+
+the keyboard presents several options for what the next word might be. For example:
+
+*gym, store, restaurant*
+
+This project is aimed on building predictive text models like those used by **SwiftKey**.
+
+The first step in building a predictive model for text is understanding the distribution and relationship between the words, tokens, and phrases in the text. The goal of this report is to understand the basic relationships observed in the data and prepare to build first linguistic models.
+
+Steps:
+
+1. **Exploratory analysis** - perform a thorough exploratory analysis of the data, understanding the distribution of words and relationship between the words in the corpora.
+2. **Understand frequencies of words and word pairs** - build figures and tables to understand variation in the frequencies of words and word pairs in the data.
 
 Questions to consider:
 
@@ -28,38 +45,110 @@ if (!file.exists("./input")) {
 }
 ```
 
+Data looks like simple text files. Each line inside text file represents individual message, post, or news.
+
+## Data File's Statistics
+
+```{r, echo=F}
+library(RWeka)
+```
+```{r, collapse=T}
+GetTextFileStat <- function(file.path) {
+    size.mb <- round(file.size(file.path) / 1024 / 1024)
+    con <- file(file.path, "r")
+    line.count <- 0
+    word.count <- 0
+    while (length(lines <- readLines(con, n=4*1024, warn=F)) > 0) {
+        line.count <- line.count + length(lines)
+        word.count <- word.count + length(WordTokenizer(lines))
+    }
+    close(con)
+    return(list(size.mb=size.mb, line.count=line.count,
+                word.count=word.count))
+}
+```
+
+File **en_US.blogs.txt** stat:
+
+```{r, cache=T}
+if (!file.exists("./output/en_US.blogs.txt.stat.rds")) {
+    en_US.blogs.txt.stat <- GetTextFileStat("./input/en_US.blogs.txt")
+    saveRDS(en_US.blogs.txt.stat, "./output/en_US.blogs.txt.stat.rds")
+} else {
+    en_US.blogs.txt.stat <- readRDS("./output/en_US.blogs.txt.stat.rds")
+}
+en_US.blogs.txt.stat
+```
+
+File **en_US.news.txt** stat:
+
+```{r, cache=T}
+if (!file.exists("./output/en_US.news.txt.stat.rds")) {
+    en_US.news.txt.stat <- GetTextFileStat("./input/en_US.news.txt")
+    saveRDS(en_US.news.txt.stat, "./output/en_US.news.txt.stat.rds")
+} else {
+    en_US.news.txt.stat <- readRDS("./output/en_US.news.txt.stat.rds")
+}
+en_US.news.txt.stat
+```
+
+```{r, echo=F}
+
+```
+
+File **en_US.twitter.txt** stat:
+
+```{r, cache=T}
+if (!file.exists("./output/en_US.twitter.txt.stat.rds")) {
+    en_US.twitter.txt.stat <- GetTextFileStat("./input/en_US.twitter.txt")
+    saveRDS(en_US.twitter.txt.stat, "./output/en_US.twitter.txt.stat.rds")
+} else {
+    en_US.twitter.txt.stat <- readRDS("./output/en_US.twitter.txt.stat.rds")
+}
+en_US.twitter.txt.stat
+```
+
+```{r, echo=F}
+
+```
+
 ## Sampling And Cleaning
 
 Following should be cleaned:
 
-1. punctation;
-2. numbers;
-3. stop wrods;
-4. profanity words;
-5. swear words;
+1. Punctation.
+2. Numbers.
+3. Stop wrods.
+4. Profanity words.
+5. Swear words.
 6. URLs, emails, accounts.
 
 ```{r, echo=FALSE}
-library("tm")
+library(tm)
+library(openNLP)
 ```
-```{r}
+```{r, collapse=T}
 ReadAndCleanCorpus <- function(dir, prob) {
     files <- list.files(dir, pattern=".txt$", full.names=T)
     lines <- character()
     for (path in files) {
-        lines <- c(lines, ReadSomeLines(path, prob))
+        lines <- c(lines, ReadSomeSentences(path, prob))
     }
     corpus <- VCorpus(VectorSource(lines))
     return (CleanCorpus(corpus))
 }
 
-ReadSomeLines <- function(path, prob) {
+ReadSomeSentences <- function(path, prob) {
     con <- file(path, "r")
     result <- numeric()
-    while (length(line <- readLines(con, n=1, warn=F)) > 0) {
-        if (rbinom(1, 1, prob) == 1) {
-            result <- c(result, line)
-        }
+    sentence.token.annotator <- Maxent_Sent_Token_Annotator()
+    while (length(lines <- readLines(con, n=4*1024, warn=F)) > 0) {
+        indices <- (rbinom(length(lines), 1, prob) == 1)
+        sampled.lines <- as.String(lines[indices])
+        sentence.annotations <- annotate(sampled.lines,
+                                         sentence.token.annotator)
+        sampled.sentences <- sampled.lines[sentence.annotations]
+        result <- c(result, sampled.sentences)
     }
     close(con)
     return (result)
@@ -93,12 +182,14 @@ CleanCorpus <- function(corpus) {
 }
 ```
 ```{r, cache=TRUE}
-set.seed(123)
-corpus <- ReadAndCleanCorpus("./input/", prob=0.05)
-```
-
-```{r}
-saveRDS(corpus, "./output/corpus.rds")
+if (!file.exists("./output/corpus.rds")) {
+    set.seed(123)
+    corpus <- ReadAndCleanCorpus("./input/", prob=0.05)
+    saveRDS(corpus, "./output/corpus.rds")
+} else {
+    corpus <- readRDS("./output/corpus.rds")
+}
+inspect(head(corpus))
 ```
 
 ## N-Gram's Frequencies
@@ -107,10 +198,9 @@ saveRDS(corpus, "./output/corpus.rds")
 
 ```{r, echo=F}
 library(data.table)
-library(RWeka)
 library(ggplot2)
 ```
-```{r}
+```{r, collapse=T}
 ToTermFreqTable <- function (term.doc.matrix) {
     term.freq <- data.table(i=term.doc.matrix$i, v=term.doc.matrix$v)
     term.freq <- term.freq[, list(freq=sum(v)), by=i]
@@ -134,45 +224,52 @@ DrawTopNGrams <- function(ngram.freq, top) {
 
 ```{r}
 top.word.count <- 30
-unigram.freq <- GetNGramsFreq(corpus, n=1)
-DrawTopNGrams(unigram.freq, top=top.word.count)
 ```
 
 ```{r}
-saveRDS(unigram.freq, "./output/unigram.freq.rds")
+if (!file.exists("./output/unigram.freq.rds")) {
+    unigram.freq <- GetNGramsFreq(corpus, n=1)
+    saveRDS(unigram.freq, "./output/unigram.freq.rds")
+} else {
+    unigram.freq <- readRDS("./output/unigram.freq.rds")
+}
+DrawTopNGrams(unigram.freq, top=top.word.count)
 ```
 
 ### 2-Gram's Frequencies
 
 ```{r}
-gram2.freq <- GetNGramsFreq(corpus, n=2)
+if (!file.exists("./output/gram2.freq.rds")) {
+    gram2.freq <- GetNGramsFreq(corpus, n=2)
+    saveRDS(gram2.freq, "./output/gram2.freq.rds")
+} else {
+    gram2.freq <- readRDS("./output/gram2.freq.rds")
+}
 DrawTopNGrams(gram2.freq, top=top.word.count)
-```
-
-```{r}
-saveRDS(gram2.freq, "./output/gram2.freq.rds")
 ```
 
 ### 3-Gram's Frequencies
 
 ```{r}
-gram3.freq <- GetNGramsFreq(corpus, n=3)
+if (!file.exists("./output/gram3.freq.rds")) {
+    gram3.freq <- GetNGramsFreq(corpus, n=3)
+    saveRDS(gram3.freq, "./output/gram3.freq.rds")
+} else {
+    gram3.freq <- readRDS("./output/gram3.freq.rds")
+}
 DrawTopNGrams(gram3.freq, top=top.word.count)
-```
-
-```{r}
-saveRDS(gram3.freq, "./output/gram3.freq.rds")
 ```
 
 ### 4-Gram's Frequencies
 
 ```{r}
-gram4.freq <- GetNGramsFreq(corpus, n=4)
+if (!file.exists("./output/gram4.freq.rds")) {
+    gram4.freq <- GetNGramsFreq(corpus, n=4)
+    saveRDS(gram4.freq, "./output/gram4.freq.rds")
+} else {
+    gram4.freq <- readRDS("./output/gram4.freq.rds")
+}
 DrawTopNGrams(gram4.freq, top=top.word.count)
-```
-
-```{r}
-saveRDS(gram4.freq, "./output/gram4.freq.rds")
 ```
 
 ## Corpora Coverage

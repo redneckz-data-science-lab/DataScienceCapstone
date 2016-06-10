@@ -1,8 +1,10 @@
 ---
-title: "basic-modeling"
+title: "Smart Keyboard Basic Modeling"
 author: "Alexander Alexandrov"
 date: "Friday, June 03, 2016"
-output: pdf_document
+output:
+    html_document:
+        code_folding: hide
 ---
 
 ## Introduction
@@ -16,9 +18,197 @@ Tasks to accomplish:
 
 Questions to consider:
 
-1. How to efficiently store an n-gram model (Markov Chains)?
+1. How to efficiently store an n-gram model (may be *Markov Chains*)?
 2. How to use the knowledge about word frequencies to make model smaller and more efficient?
 3. How many parameters is really needed (i.e. how big is n in n-gram model)?
 4. Simple ways to "smooth" the probabilities (for example, giving all n-grams a non-zero probability even if they aren't observed in the data) ?
 5. How to evaluate whether model is any good?
 6. How to use *backoff* models to estimate the probability of unobserved n-grams?
+
+## Exploratory Analysis Results Overview
+
+```{r, echo=F, warning=F, message=F}
+library("RWeka")
+library("tm")
+library("openNLP")
+library("data.table")
+```
+
+```{r}
+corpus <- readRDS("../exploratory-analysis/output/corpus.rds")
+unigram.freq <- readRDS("../exploratory-analysis/output/unigram.freq.rds")
+gram2.freq <- readRDS("../exploratory-analysis/output/gram2.freq.rds")
+gram2.freq[, c("i", "n") := list(NULL, 2)]
+gram3.freq <- readRDS("../exploratory-analysis/output/gram3.freq.rds")
+gram3.freq[, c("i", "n") := list(NULL, 3)]
+gram4.freq <- readRDS("../exploratory-analysis/output/gram4.freq.rds")
+gram4.freq[, c("i", "n") := list(NULL, 4)]
+ngram.freq <- rbind(gram2.freq, gram3.freq, gram4.freq)
+```
+
+0. Significant part of dictionary consists of very rare words. So dictionary can be reduced.
+1. For about **6 thousand words** is enough to cover **80%** of corpora.
+2. Most efficient model could cover only **56%** of the language.
+3. Stemming can help to increase coverage. But this is complicated technique.
+
+Exploratory analysis report is located [here](http://rpubs.com/redneckz/smart-keyboard-exploratory-data-analysis).
+
+## Model Effectiveness Criteria
+
+Model is expected to work in mobile environment. That's why memory usage and latency are the most important criteria. Let's fix the following constraints:
+
+0. **Accuracy** > 50%.
+1. **Memory usage** < 1 Gb.
+2. **Latency** < 3 sec.
+
+**Accuracy** can be estimated by means of splitting into training and testing sets. Or by means of more complicated techniques. For example, *Cross Validation*.
+
+## Model Common Parameters
+
+> With n-gram models it is necessary to find the right trade off between the stability of the estimate against its appropriateness. This means that trigram (i.e. triplets of words) is a common choice with large training corpora (millions of words), whereas a bigram is often used with smaller ones.
+
+According to this approach, **4-grams** dictionary can be some kind of **overkill** relative to the **mobile domain**.
+
+## Handling Unseen N-grams
+
+If something entered by user is out of dictionary scope. Than it should be cleaned up and registered in dictionary. So probability/frequency should be choosed for new items.
+
+> There are problems of balance weight between infrequent grams (for example, if a proper name appeared in the training data) and frequent grams. Also, items not seen in the training data will be given a probability of 0.0 without smoothing. For unseen but plausible data from a sample, one can introduce pseudocounts. Pseudocounts are generally motivated on Bayesian grounds.
+
+> In practice it is necessary to smooth the probability distributions by also assigning non-zero probabilities to unseen words or n-grams. The reason is that models derived directly from the n-gram frequency counts have severe problems when confronted with any n-grams that have not explicitly been seen before -- the zero-frequency problem.
+
+Different *smoothing* approaches exist:
+
+* Linear interpolation.
+* Good–Turing discounting.
+* Witten–Bell discounting.
+* Lidstone's smoothing.
+* Katz's back-off model (trigram).
+* Kneser–Ney smoothing.
+
+## Simple Prediction Model
+
+Let's start with some simple model based on some elements of *Katz's back-off* approach.
+
+### Model Overview
+
+Algorithm steps:
+
+1. Clean up provided query (the same way corpora has been cleaned up).
+2. Tokenize and compute number of words.
+3. Choose *n* (for *n-gram*) equals to number of words plus one word.
+4. Search for appropriate *n-grams*.
+5. If nothing found (or less than some coefficient), remove first word from query, and go to the step 3.
+6. Extract *tails* from found *n-grams* and order them by frequency.
+
+```{r, echo=F, warning=F, message=F}
+library("stringi")
+```
+```{r, echo=F, message=F, warning=F}
+source("../common/clean-corpus.R", chdir=T)
+```
+
+```{r}
+PredictNextWords <- function(ngram.freq, query, max.ngram.count=5) {
+    query.corpus <- CleanCorpus(VCorpus(VectorSource(query)))
+    query.corpus.content <- query.corpus[[1]]$content
+    query.words <- NGramTokenizer(query.corpus.content, Weka_control(min=1, max=1))
+    resulting.ngram.freq <- FindNGrams(ngram.freq, query.words, max.ngram.count)
+    return(ExtractNGramsTails(resulting.ngram.freq, query.words))
+}
+FindNGrams <- function(ngram.freq, query.words, max.ngram.count,
+                       result=data.table()) {
+    if ((length(query.words) == 0) || (nrow(result) >= max.ngram.count)) {
+        return(head(result, n=max.ngram.count))
+    }
+    target.n <- length(query.words) + 1
+    target.query <- paste(query.words, collapse=" ")
+    target.ngram.freq <- head(ngram.freq[(target.n == n) & stri_startswith_fixed(term, target.query)], n=max.ngram.count)
+    return(FindNGrams(ngram.freq, tail(query.words, n=-1), max.ngram.count,
+                      rbind(result, target.ngram.freq)))
+}
+ExtractNGramsTails <- function(ngram.freq, query.words, result=character()) {
+    if (length(query.words) == 0) {
+        return(result)
+    }
+    target.n <- length(query.words) + 1
+    target.query <- paste(query.words, collapse=" ")
+    return(c(result, ngram.freq[target.n == n,
+                                stri_replace_first_fixed(term, target.query, "")]))
+}
+```
+
+### Smoke Testing
+
+Testing phrase: *I cant wait*
+
+Predicted words:
+
+```{r}
+PredictNextWords(ngram.freq, "I cant wait", max.ngram.count=10)
+```
+
+### Model Profiling
+
+#### Memory usage
+
+```{r}
+format(object.size(ngram.freq), units="MB")
+```
+
+Memory usage is small enough.
+
+#### 2-Gram performance
+
+```{r}
+ProfilePredictor <- function(predictor, ngram.freq, queries, max.ngram.count=10) {
+    tmp <- tempfile()
+    sampling.time <- sapply(queries, FUN=function(query) {
+        Rprof(tmp <- tempfile())
+        do.call(predictor, list(ngram.freq=ngram.freq, query=query,
+                max.ngram.count=max.ngram.count))
+        Rprof(NULL)
+        return(summaryRprof(tmp)$sampling.time)
+    })
+    unlink(tmp)
+    return(sampling.time)
+}
+```
+
+```{r}
+gram2.testing.queries <- c("first", "just", "cant", "will", "love")
+gram2.sampling.time <- ProfilePredictor(PredictNextWords, ngram.freq,
+                                        queries=gram2.testing.queries)
+print(paste(mean(gram2.sampling.time), "seconds"))
+```
+
+#### 3-Gram performance
+
+```{r}
+gram3.testing.queries <- c("good luck", "one day", "look like", "good morning", 
+                           "can get")
+gram3.sampling.time <- ProfilePredictor(PredictNextWords, ngram.freq,
+                                        queries=gram3.testing.queries)
+print(paste(mean(gram3.sampling.time), "seconds"))
+```
+
+#### 4-Gram performance
+
+```{r}
+gram4.testing.queries <- c("cant wait see", "dont even know",
+                           "new york city", "happy new year",
+                           "dont feel like")
+gram4.sampling.time <- ProfilePredictor(PredictNextWords, ngram.freq,
+                                        queries=gram4.testing.queries)
+print(paste(mean(gram4.sampling.time), "seconds"))
+```
+
+So average latency is acceptable in major cases.
+
+## Further Plans
+
+1. Estimate simple model accuracy using *Cross Validation* technique.
+2. Build model based on *Markov Chains* and *Katz's Backoff Model*. Models based on *Markov Chains* (dictionary structure) potentially have better performance.
+3. Compare different models to each other.
+4. Create *Shiny* app showing best model in action.
+5. Create brief presentation describing problems and achieved results.

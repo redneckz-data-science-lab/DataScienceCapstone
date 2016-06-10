@@ -1,8 +1,10 @@
 ---
-title: "Exploratory Data Analysis"
+title: "Smart Keyboard Exploratory Data Analysis"
 author: "Alexander Alexandrov"
 date: "Friday, May 06, 2016"
-output: pdf_document
+output:
+    html_document:
+        code_folding: hide
 ---
 
 ## Introduction
@@ -32,7 +34,7 @@ Questions to consider:
 2. What are the frequencies of 2-grams and 3-grams in the dataset?
 3. How many unique words are needed in a frequency sorted dictionary to cover 50% of all word instances in the language? 90%?
 4. How to evaluate how many of the words come from foreign languages?
-5. A way to increase the coverage -- identifying words that may not be in the corpora or using a smaller number of words in the dictionary to cover the same number of phrases?
+5. A way to increase the coverage -- identifying words that may not be in the corpora or using a smaller number of words in the dictionary to cover the same number of phrases.
 
 ## Downloading the Data
 
@@ -45,16 +47,18 @@ if (!file.exists("./input")) {
 }
 ```
 
-Data looks like simple text files. Each line inside text file represents individual message, post, or news.
+Data looks like simple text files. Each line inside text file represents individual message or post.
 
 ## Data File's Statistics
 
-```{r, echo=F}
-library(RWeka)
+Sizes, line couts, and word counts.
+
+```{r, echo=F, warning=F, message=F}
+library("RWeka")
 ```
-```{r, collapse=T}
+```{r}
 GetTextFileStat <- function(file.path) {
-    size.mb <- round(file.size(file.path) / 1024 / 1024)
+    size.mb <- round(file.info(file.path)$size / 1024 / 1024)
     con <- file(file.path, "r")
     line.count <- 0
     word.count <- 0
@@ -70,64 +74,55 @@ GetTextFileStat <- function(file.path) {
 
 File **en_US.blogs.txt** stat:
 
-```{r, cache=T}
+```{r}
 if (!file.exists("./output/en_US.blogs.txt.stat.rds")) {
     en_US.blogs.txt.stat <- GetTextFileStat("./input/en_US.blogs.txt")
     saveRDS(en_US.blogs.txt.stat, "./output/en_US.blogs.txt.stat.rds")
 } else {
     en_US.blogs.txt.stat <- readRDS("./output/en_US.blogs.txt.stat.rds")
 }
-en_US.blogs.txt.stat
+print(en_US.blogs.txt.stat)
 ```
 
 File **en_US.news.txt** stat:
 
-```{r, cache=T}
+```{r}
 if (!file.exists("./output/en_US.news.txt.stat.rds")) {
     en_US.news.txt.stat <- GetTextFileStat("./input/en_US.news.txt")
     saveRDS(en_US.news.txt.stat, "./output/en_US.news.txt.stat.rds")
 } else {
     en_US.news.txt.stat <- readRDS("./output/en_US.news.txt.stat.rds")
 }
-en_US.news.txt.stat
-```
-
-```{r, echo=F}
-
+print(en_US.news.txt.stat)
 ```
 
 File **en_US.twitter.txt** stat:
 
-```{r, cache=T}
+```{r}
 if (!file.exists("./output/en_US.twitter.txt.stat.rds")) {
     en_US.twitter.txt.stat <- GetTextFileStat("./input/en_US.twitter.txt")
     saveRDS(en_US.twitter.txt.stat, "./output/en_US.twitter.txt.stat.rds")
 } else {
     en_US.twitter.txt.stat <- readRDS("./output/en_US.twitter.txt.stat.rds")
 }
-en_US.twitter.txt.stat
-```
-
-```{r, echo=F}
-
+print(en_US.twitter.txt.stat)
 ```
 
 ## Sampling And Cleaning
 
-Following should be cleaned:
+Accroding to the file's statistics, data is too big to handle it in memory. So data should be joined in one corpus and sampled before any analysis.
+Also data should be cleaned out of the meaningless parts. For example, punctation and stop words (is, are, the, a) are not relevant to the word prediction task.
+Following should be cleaned: punctation, numbers, stop wrods, profanity words, swear words, URLs, emails, accounts.
 
-1. Punctation.
-2. Numbers.
-3. Stop wrods.
-4. Profanity words.
-5. Swear words.
-6. URLs, emails, accounts.
-
-```{r, echo=FALSE}
-library(tm)
-library(openNLP)
+```{r, echo=F, warning=F, message=F}
+library("tm")
+library("openNLP")
 ```
-```{r, collapse=T}
+```{r, echo=F, warning=F, message=F}
+source("../common/clean-corpus.R", chdir=T)
+```
+
+```{r}
 ReadAndCleanCorpus <- function(dir, prob) {
     files <- list.files(dir, pattern=".txt$", full.names=T)
     lines <- character()
@@ -153,35 +148,9 @@ ReadSomeSentences <- function(path, prob) {
     close(con)
     return (result)
 }
-
-CleanCorpus <- function(corpus) {
-    getTransformations()
-    result <- tm_map(corpus, content_transformer(tolower))
-    result <- tm_map(result, removePunctuation)
-    result <- tm_map(result, removeNumbers)
-    # Remove english stop words (like the, a, an, etc)
-    result <- tm_map(result, removeWords, stopwords("english"))
-    # Remove profanity words
-    # http://www.freewebheaders.com/full-list-of-bad-words-banned-by-google/
-    con <- file("./bad-words-dict/bad-words-banned-by-google.txt", "r")
-    swear.words <- readLines(con, warn=F)
-    close(con)
-    # http://www.bannedwordlist.com/
-    con <- file("./bad-words-dict/swearWords.txt", "r")
-    swear.words <- c(swear.words, readLines(con, warn=F))
-    close(con)
-    result <- tm_map(result, removeWords, swear.words)
-    RemoveByPattern <- content_transformer(function(x, pattern) gsub(pattern, " ", x))
-    # Remove URLs
-    result <- tm_map(result, RemoveByPattern, "(ht|f)tps?://([\\da-z\\.-]+)\\.([a-z\\.]{2,6})([/\\w \\.-]*)*/?")
-    # Remove emails
-    result <- tm_map(result, RemoveByPattern, "([a-z0-9_\\.-]+)@([a-z0-9_\\.-]+)\\.([a-z\\.]{2,6})")
-    # Remove accounts
-    result <- tm_map(result, RemoveByPattern, "@[^\\s]+")
-    return (tm_map(result, stripWhitespace))
-}
 ```
-```{r, cache=TRUE}
+
+```{r}
 if (!file.exists("./output/corpus.rds")) {
     set.seed(123)
     corpus <- ReadAndCleanCorpus("./input/", prob=0.05)
@@ -189,18 +158,30 @@ if (!file.exists("./output/corpus.rds")) {
 } else {
     corpus <- readRDS("./output/corpus.rds")
 }
-inspect(head(corpus))
 ```
 
-## N-Gram's Frequencies
+## N-gram's Frequencies
+
+> *N-gram* is a contiguous sequence of n items from a given sequence of text.
+
+In our case item is a word.
+
+N-gram's frequencies can help:
+
+* To explore corpus structure.
+* To optimize dictionaries or other structures used in word prediction.
+* As part of simple word prediction model.
 
 ### Unigram's Frequencies
 
-```{r, echo=F}
-library(data.table)
-library(ggplot2)
+Unigram - separate word.
+
+```{r, echo=F, warning=F, message=F}
+library("data.table")
+library("ggplot2")
 ```
-```{r, collapse=T}
+
+```{r}
 ToTermFreqTable <- function (term.doc.matrix) {
     term.freq <- data.table(i=term.doc.matrix$i, v=term.doc.matrix$v)
     term.freq <- term.freq[, list(freq=sum(v)), by=i]
@@ -218,11 +199,12 @@ DrawTopNGrams <- function(ngram.freq, top) {
     top.ngram.freq <- head(ngram.freq, top)
     top.ngram.freq$term <- reorder(top.ngram.freq$term, top.ngram.freq$freq)
     ggplot(top.ngram.freq, aes(x=term, y=freq)) +
-            geom_bar(stat="identity") + coord_flip()
+            geom_bar(stat="identity") + coord_flip() +
+            xlab("N-gram") + ylab("Frequency")
 }
 ```
 
-```{r}
+```{r, echo=F}
 top.word.count <- 30
 ```
 
@@ -236,6 +218,12 @@ if (!file.exists("./output/unigram.freq.rds")) {
 DrawTopNGrams(unigram.freq, top=top.word.count)
 ```
 
+```{r}
+hist(unigram.freq$freq, main="Unigram's Frequencies Histogram", breaks=100, xlab="Frequency", ylab="")
+```
+
+Significant part of dictionary consists of low-frequency words.
+
 ### 2-Gram's Frequencies
 
 ```{r}
@@ -248,6 +236,13 @@ if (!file.exists("./output/gram2.freq.rds")) {
 DrawTopNGrams(gram2.freq, top=top.word.count)
 ```
 
+```{r}
+hist(gram2.freq$freq, main="2-Ggram's Frequencies Histogram", breaks=100, xlab="Frequency", ylab="")
+```
+
+Similarly to unigram's histogram - here we have a lot of rare terms.
+Obviously 2-gram's frequencies are ~10 times lower than unigram's frequencies, but 2-gram's dictionary is ~10 times larger.
+
 ### 3-Gram's Frequencies
 
 ```{r}
@@ -258,6 +253,10 @@ if (!file.exists("./output/gram3.freq.rds")) {
     gram3.freq <- readRDS("./output/gram3.freq.rds")
 }
 DrawTopNGrams(gram3.freq, top=top.word.count)
+```
+
+```{r}
+hist(gram3.freq$freq, main="3-Ggram's Frequencies Histogram", breaks=100, xlab="Frequency", ylab="")
 ```
 
 ### 4-Gram's Frequencies
@@ -272,54 +271,121 @@ if (!file.exists("./output/gram4.freq.rds")) {
 DrawTopNGrams(gram4.freq, top=top.word.count)
 ```
 
-## Corpora Coverage
+```{r}
+hist(gram4.freq$freq, main="4-Ggram's Frequencies Histogram", breaks=100, xlab="Frequency", ylab="")
+```
 
-To make better predictions dictionary may be reduced and cleaned from very rare or occasional words and phrases. Lets draw how dictionary size impacts coverage.
+## Coverage
+
+Coverage is useful metric to estimate potential effectiveness of the prediction model.
+
+### Corpora Coverage
+
+How dictionary size impacts corpora coverage?
 
 ```{r}
-dictionary.total.size <- sum(unigram.freq$freq)
-dictionary.size.to.coverage <- cumsum(unigram.freq$freq * 100 / dictionary.total.size)
+dictionary.size.to.coverage <- cumsum(unigram.freq$freq * 100 / sum(unigram.freq$freq))
 plot(x=1:length(dictionary.size.to.coverage), y=dictionary.size.to.coverage,
      type="l", main="Coverage", xlab="Dictionary Size (words)", ylab="Coverage (percent)")
 ```
 
-It's evident from the plot that dictionary size has exponential dependency on coverage. In other words 100% converage is not the case. And smaller values of coverage should be considered to avoid overfitting.
+It's evident from the plot that coverage has logarithmic dependency on dictionary size. To make better predictions dictionary may be reduced and cleaned from very rare or occasional words and phrases.
 
 How many words covers **90%** of corpora?
 
 ```{r}
-which(dictionary.size.to.coverage > 90)[[1]]
+print(which(dictionary.size.to.coverage > 90)[[1]])
 ```
 
 How many words covers **80%** of corpora?
 
 ```{r}
-which(dictionary.size.to.coverage > 80)[[1]]
+print(which(dictionary.size.to.coverage > 80)[[1]])
 ```
 
 How many words covers **70%** of corpora?
 
 ```{r}
-which(dictionary.size.to.coverage > 70)[[1]]
+print(which(dictionary.size.to.coverage > 70)[[1]])
 ```
 
-Also according to the http://www.oxforddictionaries.com/words/how-many-words-are-there-in-the-english-language:
+### Stemming
 
-> The Second Edition of the 20-volume Oxford English Dictionary contains full entries for 171,476 words in current use...
+> Stemming is the process of reducing inflected (or sometimes derived) words to their word stem, base or root form—generally a written word form
 
-So effective coverage (language coverage) should be less then dictionary coverage for about `r round(171476 / dictionary.total.size, 1)` times.
+Stemming can help to increase coverage and reduce dictionary size. But the result of the prediction should be some word, not word stem. So each stem should be assigned to some set of words. Such complicated technique should be justified by its high efficiency.
 
-## Words From Foreign Languages
+Stem's frequencies:
 
-How to evaluate how many of the words come from foreign languages?
-Filter based on some external/online dictionary could be useful. But I think this problem is related to the rare words, excluded from the dictionary to fit reasonable coverage.
+```{r}
+if (!file.exists("./output/stemmed.corpus.rds")) {
+    stemmed.corpus <- tm_map(corpus, stemDocument, language="english")
+    saveRDS(stemmed.corpus, "./output/stemmed.corpus.rds")
+} else {
+    stemmed.corpus <- readRDS("./output/stemmed.corpus.rds")
+}
+if (!file.exists("./output/stemmed.unigram.freq.rds")) {
+    stemmed.unigram.freq <- GetNGramsFreq(stemmed.corpus, n=1)
+    saveRDS(stemmed.unigram.freq, "./output/stemmed.unigram.freq.rds")
+} else {
+    stemmed.unigram.freq <- readRDS("./output/stemmed.unigram.freq.rds")
+}
+DrawTopNGrams(stemmed.unigram.freq, top=top.word.count)
+```
 
-## Increasing the Coverage
+```{r}
+old.par <- par(mfrow = c(2, 1))
+hist(stemmed.unigram.freq$freq, main="Stem's Frequencies Histogram", breaks=100, xlab="", ylab="")
+hist(unigram.freq$freq, main="Unigram's Frequencies Histogram", breaks=100, xlab="Frequency", ylab="")
+par(old.par)
+```
 
-### Identifying Words Out of Corpora
+So dictionary after stemming becomes smaller. And coverage should be at least the same. Frequency distributions are the same.
 
-A way to increase the coverage - identifying words that may not be in the corpora.
-Some online service could help to estimate "real" term's frequencies and to estimate "effective" coverage. For example:
+### Language Coverage
+
+N-gram's frequencies (computed above) are baised. Therefore coverage estimation is baised too. To estimate language coverage external sources could be used. For example:
 
 * Microsoft Web N-gram
 * Google Ngram Viewer
+
+Another way is to use heuristic techniques. For example, *Good-Turing*.
+
+> Good–Turing frequency estimation is a statistical technique for estimating the probability of encountering an object of a hitherto unseen species, given a set of past observations of objects from different species.
+
+In other words, probability of unseen terms is estimated from already known frequencies distribution (using binomial ditribution assumption).
+
+```{r, echo=F, warning=F, message=F}
+library("edgeR")
+```
+
+Probability of unseen unigram:
+
+```{r}
+print(goodTuring(unigram.freq$freq)$P0)
+```
+
+Probability is very low. Some rough estimation is needed.
+
+[How many words are there in the english language?](http://www.oxforddictionaries.com/words/how-many-words-are-there-in-the-english-language)
+
+> The Second Edition of the 20-volume Oxford English Dictionary contains full entries for 171,476 words in current use...
+
+```{r, echo=F}
+word.in.use.count <- 171476
+lang.cov.vs.corpus.cov <- round(word.in.use.count / nrow(stemmed.unigram.freq), 1)
+```
+
+Number of stems in dictionary equals to **`r nrow(stemmed.unigram.freq)`**.
+So language coverage could be astimated as **less** than corpus coverage for about **`r lang.cov.vs.corpus.cov`** times.
+
+## Conclusions
+
+0. Significant part of dictionary consists of very rare words. So dictionary can be reduced.
+1. For about **6 thousand words** is enough to cover **80%** of corpora.
+2. Most efficient model could cover only **`r round(100/lang.cov.vs.corpus.cov)`%** of the language.
+3. Stemming can help to increase coverage. But this is complicated technique.
+
+## Further Analysis
+
+Basic modeling report is located [here](http://rpubs.com/redneckz/smart-keyboard-basic-modeling).

@@ -55,20 +55,17 @@ Sizes, line couts, and word counts.
 
 ```{r, echo=F, warning=F, message=F}
 library("RWeka")
+library("stringi")
 ```
 ```{r}
 GetTextFileStat <- function(file.path) {
     size.mb <- round(file.info(file.path)$size / 1024 / 1024)
-    con <- file(file.path, "r")
-    line.count <- 0
-    word.count <- 0
-    while (length(lines <- readLines(con, n=4*1024, warn=F)) > 0) {
-        line.count <- line.count + length(lines)
-        word.count <- word.count + length(WordTokenizer(lines))
-    }
-    close(con)
-    return(list(size.mb=size.mb, line.count=line.count,
-                word.count=word.count))
+    lines <- readLines(file.path, warn=F, skipNul=T)
+    word.count <- sapply(lines, FUN=function(line) {
+        return(length(stri_split_regex(line, "\\s+", simplify=T)))
+    })
+    return(list(size.mb=size.mb, line.count=length(lines), 
+                word.count=sum(word.count)))
 }
 ```
 
@@ -125,31 +122,35 @@ source("../common/clean-corpus.R", chdir=T)
 ```{r}
 ReadAndCleanCorpus <- function(dir, prob) {
     files <- list.files(dir, pattern=".txt$", full.names=T)
-    lines <- character()
-    for (path in files) {
-        lines <- c(lines, ReadSomeSentences(path, prob))
+    corpus <- NULL
+    for (file.path in files) {
+        sentences <- ReadSomeSentences(file.path, sum(prob))
+        current.corpus <- CleanCorpus(VCorpus(VectorSource(sentences)))
+        if (is.null(corpus)) {
+            corpus <- current.corpus
+        } else {
+            corpus <- c(corpus, current.corpus)
+        }
     }
-    corpus <- VCorpus(VectorSource(lines))
-    return (CleanCorpus(corpus))
+    return(corpus)
 }
 
-ReadSomeSentences <- function(path, prob) {
-    con <- file(path, "r")
-    result <- numeric()
-    sentence.token.annotator <- Maxent_Sent_Token_Annotator()
-    while (length(lines <- readLines(con, n=4*1024, warn=F)) > 0) {
-        indices <- (rbinom(length(lines), 1, prob) == 1)
-        sampled.lines <- as.String(lines[indices])
-        sentence.annotations <- annotate(sampled.lines,
-                                         sentence.token.annotator)
-        sampled.sentences <- sampled.lines[sentence.annotations]
-        result <- c(result, sampled.sentences)
-    }
-    close(con)
-    return (result)
+ReadSomeSentences <- function(file.path, prob) {
+    lines <- readLines(file.path, warn=F, skipNul=T)
+    sampled.lines <- lines[rbinom(n=length(lines), size=1,
+                                  prob=sum(prob)) == 1]
+    annotator <- Maxent_Sent_Token_Annotator()
+    sampled.sentences <- Map(f=function(line) {
+        str <- as.String(line)
+        return(str[annotate(str, annotator)])
+    }, sampled.lines)
+    return(Reduce(f=c, x=sampled.sentences, init=character()))
 }
 ```
 
+According to **holdout method**, combined data, should be split into three groups: **training**, **validation**, and **test** corpus.
+More complicated techniques, like **k-fold**, need much more time and memory.
+ 
 ```{r}
 if (!file.exists("./output/corpus.rds")) {
     set.seed(123)
@@ -206,11 +207,12 @@ DrawTopNGrams <- function(ngram.freq, top) {
 
 ```{r, echo=F}
 top.word.count <- 30
+train.corpus <- corpus
 ```
 
 ```{r}
 if (!file.exists("./output/unigram.freq.rds")) {
-    unigram.freq <- GetNGramsFreq(corpus, n=1)
+    unigram.freq <- GetNGramsFreq(train.corpus, n=1)
     saveRDS(unigram.freq, "./output/unigram.freq.rds")
 } else {
     unigram.freq <- readRDS("./output/unigram.freq.rds")
@@ -228,7 +230,7 @@ Significant part of dictionary consists of low-frequency words.
 
 ```{r}
 if (!file.exists("./output/gram2.freq.rds")) {
-    gram2.freq <- GetNGramsFreq(corpus, n=2)
+    gram2.freq <- GetNGramsFreq(train.corpus, n=2)
     saveRDS(gram2.freq, "./output/gram2.freq.rds")
 } else {
     gram2.freq <- readRDS("./output/gram2.freq.rds")
@@ -247,7 +249,7 @@ Obviously 2-gram's frequencies are ~10 times lower than unigram's frequencies, b
 
 ```{r}
 if (!file.exists("./output/gram3.freq.rds")) {
-    gram3.freq <- GetNGramsFreq(corpus, n=3)
+    gram3.freq <- GetNGramsFreq(train.corpus, n=3)
     saveRDS(gram3.freq, "./output/gram3.freq.rds")
 } else {
     gram3.freq <- readRDS("./output/gram3.freq.rds")
@@ -263,7 +265,7 @@ hist(gram3.freq$freq, main="3-Ggram's Frequencies Histogram", breaks=100, xlab="
 
 ```{r}
 if (!file.exists("./output/gram4.freq.rds")) {
-    gram4.freq <- GetNGramsFreq(corpus, n=4)
+    gram4.freq <- GetNGramsFreq(train.corpus, n=4)
     saveRDS(gram4.freq, "./output/gram4.freq.rds")
 } else {
     gram4.freq <- readRDS("./output/gram4.freq.rds")
@@ -319,7 +321,7 @@ Stem's frequencies:
 
 ```{r}
 if (!file.exists("./output/stemmed.corpus.rds")) {
-    stemmed.corpus <- tm_map(corpus, stemDocument, language="english")
+    stemmed.corpus <- tm_map(train.corpus, stemDocument, language="english")
     saveRDS(stemmed.corpus, "./output/stemmed.corpus.rds")
 } else {
     stemmed.corpus <- readRDS("./output/stemmed.corpus.rds")

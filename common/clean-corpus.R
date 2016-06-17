@@ -28,6 +28,7 @@
         result <- tm_map(result, RemoveByPattern, "([a-z0-9_\\.-]+)@([a-z0-9_\\.-]+)\\.([a-z\\.]{2,6})")
         # Remove accounts
         result <- tm_map(result, RemoveByPattern, "@[^\\s]+")
-        return (tm_map(result, stripWhitespace))
+        result <- tm_map(result, stripWhitespace)
+        return(result)
     }
 })()

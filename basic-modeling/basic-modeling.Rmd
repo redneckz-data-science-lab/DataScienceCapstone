@@ -133,8 +133,10 @@ ExtractNGramsTails <- function(ngram.freq, query.words, result=character()) {
     }
     target.n <- length(query.words) + 1
     target.query <- paste(query.words, collapse=" ")
-    return(c(result, ngram.freq[target.n == n,
-                                stri_replace_first_fixed(term, target.query, "")]))
+    target.tails <- ngram.freq[target.n == n,
+                               stri_replace_first_fixed(term, target.query, "")]
+    return(ExtractNGramsTails(ngram.freq, tail(query.words, n=-1),
+                              c(result, target.tails)))
 }
 ```
 

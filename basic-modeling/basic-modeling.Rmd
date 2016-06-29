@@ -28,6 +28,7 @@ Questions to consider:
 ## Exploratory Analysis Results Overview
 
 ```{r, echo=F, warning=F, message=F}
+source("../common/partitioned-corpus.R", chdir=T)
 source("../common/ngram-freq-table.R", chdir=T)
 ```
 
@@ -42,9 +43,12 @@ cv.ngram.freq.files <- split(sampled.ngram.freq.files,
                       size=1, prob=0.1), levels=c(0, 1)))
 train.freq.table <- CombinePartitions(cv.ngram.freq.files[[1]],
                                       reduce.f=MergeNGramFreqTables)
+train.freq.table <- train.freq.table[freq > 1][order(-freq)]
 test.freq.table <- CombinePartitions(cv.ngram.freq.files[[2]],
                                      reduce.f=MergeNGramFreqTables)
-summary(train.freq.table[order(-freq)])
+test.freq.table <- test.freq.table[n > 1 & freq > 1][, .SD[which.max(freq)],
+                                                     by=first.words]
+summary(train.freq.table)
 ```
 
 0. Significant part of dictionary consists of very rare words. So dictionary can be reduced.
@@ -106,10 +110,6 @@ Algorithm steps:
 ```{r, echo=F, message=F, warning=F}
 library("stringi")
 source("../common/clean-corpus.R", chdir=T)
-```
-
-```{r}
-train.freq.table <- train.freq.table[order(-freq)]
 ```
 
 ```{r}
@@ -210,17 +210,15 @@ EstimatePredictorAccuracy <- function(predictor,
                                       train.freq.table,
                                       test.freq.table,
                                       max.ngram.count=10) {
-    most.freq.table <- test.freq.table[n > 1, .SD[which.max(freq)],
-                                       by=first.words]
     assert <- function(first.words, expected.word) {
         next.words <- predictor(ngram.freq=train.freq.table,
                                 query=first.words,
                                 max.ngram.count=max.ngram.count)
         return(any(expected.word == next.words))
     }
-    assertion.result <- most.freq.table[, assert(first.words,
-                                                 expected.word=last.word),
-                                        by=.I]
+    assertion.result <- test.freq.table[, list(V=assert(first.words,
+                                                        last.word)),
+                                        by=1:nrow(test.freq.table)]$V
     return(sum(assertion.result) / length(assertion.result))
 }
 ```

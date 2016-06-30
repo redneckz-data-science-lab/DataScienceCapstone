@@ -1,10 +1,12 @@
 (function() {
     CombinePartitions <<- function(partition.files,
                                    map.f=identity, reduce.f=c) {
-        objs <- Map(function(in.file.path) {
-            map.f(readRDS(in.file.path))
-        }, partition.files)
-        return(Reduce(reduce.f, objs))
+        read <- function(in.file.path) map.f(readRDS(in.file.path))
+        acc <- read(head(partition.files, 1))
+        for (in.file.path in tail(partition.files, -1)) {
+            acc <- reduce.f(acc, read(in.file.path))
+        }
+        return(acc)
     }
     
     MapPartitions <<- function(f, in.dir, out.dir) {

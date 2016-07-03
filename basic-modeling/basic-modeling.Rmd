@@ -33,20 +33,23 @@ source("../common/ngram-freq-table.R", chdir=T)
 ```
 
 ```{r}
-ngram.freq.files <- list.files("../exploratory-analysis/output/freq-table", pattern=".rds$", full.names=T)
-file.count <- length(ngram.freq.files)
-group.count <- 20
-group.size <- ceiling(file.count / group.count)
-ngram.freq.files.groups <- split(ngram.freq.files,
-                                 f=rep(1:group.count,
-                                       each=group.size)[1:file.count])
+(function() {
+    ngram.freq.files <- list.files("../exploratory-analysis/output/freq-table",
+                                   pattern=".rds$", full.names=T)
+    file.count <- length(ngram.freq.files)
+    group.count <- 5 # Memory/performance trade-off
+    group.size <- ceiling(file.count / group.count)
+    ngram.freq.files.groups <<- split(ngram.freq.files,
+                                      f=rep(1:group.count,
+                                            each=group.size)[1:file.count])
+})()
 ```
 
 Training data contains a lot of very rare n-grams, so can be cleaned after loading.
 
 ```{r}
     CombineNgramFreqTablesGroups <- function(files.groups) {
-        ngram.freq.table <- ComputeNgramFreqTablesGroup(files.groups[1][[1]])
+        ngram.freq.table <- ComputeNgramFreqTablesGroup(files.groups[[1]])
         for (files.group in files.groups[-1]) {
             ngram.freq.table <- MergeNGramFreqTables(
                     ngram.freq.table,
@@ -55,7 +58,6 @@ Training data contains a lot of very rare n-grams, so can be cleaned after loadi
         return(ngram.freq.table[freq > 1])
     }
     ComputeNgramFreqTablesGroup <- function(files.group) {
-        print(files.group)
         ngram.freq.table <- CombinePartitions(files.group,
                                               reduce.f=MergeNGramFreqTables)
         return(ngram.freq.table[freq > 1])
@@ -76,10 +78,12 @@ Test data should contain only the most frequent n-grams.
 
 ```{r}
 if (!file.exists("./output/test.freq.table.rds")) {
-    test.freq.table <- CombinePartitions(cv.ngram.freq.files[[2]],
-                                         reduce.f=MergeNGramFreqTables)
-    test.freq.table <- test.freq.table[n > 1 & freq > 1][, .SD[which.max(freq)],
-                                                         by=first.words]
+    set.seed(123456)
+    test.files.group <- sapply(ngram.freq.files.groups,
+                               function(files.group) sample(files.group, 1))
+    test.freq.table <- ComputeNgramFreqTablesGroup(test.files.group)
+    test.freq.table <- test.freq.table[n > 1, .SD[which.max(freq)],
+                                       by=first.words]
     saveRDS(test.freq.table, "./output/test.freq.table.rds")
 } else {
     test.freq.table <- readRDS("./output/test.freq.table.rds")
@@ -146,6 +150,10 @@ Algorithm steps:
 ```{r, echo=F, message=F, warning=F}
 library("stringi")
 source("../common/clean-corpus.R", chdir=T)
+```
+
+```{r}
+train.freq.table <- train.freq.table[order(-freq)]
 ```
 
 ```{r}
@@ -268,10 +276,47 @@ format(EstimatePredictorAccuracy(PredictNextWords,
        digits=3)
 ```
 
+```{r}
+test.quiz.1 <- list("The guy in front of me just bought a pound of bacon, a bouquet, and a case of" = c("pretzels", "soda", "beer", "cheese"),
+                    "You're the reason why I smile everyday. Can you follow me please? It would mean the" = c("most", "world", "universe", "best"),
+                    "Hey sunshine, can you follow me and make me the" = c("bluest", "saddest", "happiest", "smelliest"),
+                    "Very early observations on the Bills game: Offense still struggling but the" = c("referees", "defense", "players", "crowd"),
+                    "Go on a romantic date at the" = c("movies", "grocery", "beach", "mall"),
+                    "Well I'm pretty sure my granny has some old bagpipes in her garage I'll dust them off and be on my" = c("phone", "horse", "way", "motorcycle"),
+                    "Ohhhhh #PointBreak is on tomorrow. Love that film and haven't seen it in quite some" = c("years", "weeks", "time", "thing"),
+                    "After the ice bucket challenge Louis will push his long wet hair out of his eyes with his little" = c("ears", "fingers", "toes", "eyes"),
+                    "Be grateful for the good times and keep the faith during the" = c("hard", "worse", "sad", "bad"),
+                    "If this isn't the cutest thing you've ever seen, then you must be" = c("insensitive", "asleep", "callous", "insane"))
+```
+
+```{r}
+TestPredictorAgainstQuiz <- function(predictor, train.freq.table,
+         test.quiz,
+         max.ngram.count=10) {
+    return(sapply(names(test.quiz), function(query) {
+        expected.next.words <- test.quiz[[query]]
+        next.words <- predictor(ngram.freq=train.freq.table,
+                                query=query,
+                                max.ngram.count=max.ngram.count)
+        return(intersect(expected.next.words, next.words))
+    }))
+}
+```
+
+```{r}
+TestPredictorAgainstQuiz(PredictNextWords,
+                         train.freq.table,
+                         test.quiz.1)
+```
+
 ## Kneser-Ney
 
 > Kneser-Ney evolved from absolute-discounting interpolation, which makes use of both higher-order (i.e., higher-n) and lower-order language models, reallocating some probability mass from 4-grams or 3-grams to simpler unigram models.
 
 ```{r}
+source("../common/kneser-ney.R", chdir=T)
+```
 
+```{r}
+SmoothNgramFreqTableByKneserNey(train.freq.table)
 ```

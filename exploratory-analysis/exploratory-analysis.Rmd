@@ -54,7 +54,6 @@ Data looks like simple text files. Each line inside text file represents individ
 Sizes, line couts, and word counts.
 
 ```{r, echo=F, warning=F, message=F}
-library("RWeka")
 library("stringi")
 ```
 ```{r}
@@ -112,40 +111,23 @@ Also data should be cleaned out of the meaningless parts. For example, punctatio
 Following should be cleaned: punctation, numbers, stop wrods, profanity words, swear words, URLs, emails, accounts.
 
 ```{r, echo=F, warning=F, message=F}
-library("tm")
-library("openNLP")
-```
-```{r, echo=F, warning=F, message=F}
+source("../common/read-sentences.R", chdir=T)
 source("../common/clean-corpus.R", chdir=T)
+source("../common/partition-corpus.R", chdir=T)
 ```
 
 ```{r}
-ReadAndCleanCorpus <- function(dir, prob) {
-    files <- list.files(dir, pattern=".txt$", full.names=T)
-    corpus <- NULL
-    for (file.path in files) {
-        sentences <- ReadSomeSentences(file.path, sum(prob))
-        current.corpus <- CleanCorpus(VCorpus(VectorSource(sentences)))
-        if (is.null(corpus)) {
-            corpus <- current.corpus
-        } else {
-            corpus <- c(corpus, current.corpus)
-        }
-    }
-    return(corpus)
-}
-
-ReadSomeSentences <- function(file.path, prob) {
-    lines <- readLines(file.path, warn=F, skipNul=T)
-    sampled.lines <- lines[rbinom(n=length(lines), size=1,
-                                  prob=sum(prob)) == 1]
-    annotator <- Maxent_Sent_Token_Annotator()
-    sampled.sentences <- Map(f=function(line) {
-        str <- as.String(line)
-        return(str[annotate(str, annotator)])
-    }, sampled.lines)
-    return(Reduce(f=c, x=sampled.sentences, init=character()))
-}
+chunk.line.count <- 8*1024
+PartitionCorpus(in.dir="./input/", out.dir="./output/cleaned-corpus",
+                chunk.reader=function(con) {
+                    sentences <- ReadSentences(con, chunk.line.count)
+                    corpus <- CleanCorpus(VCorpus(VectorSource(
+                            sentences)))
+                    return(corpus)
+                },
+                chunk.skiper=function(con) {
+                    readLines(con, n=chunk.line.count, warn=F, skipNul=T)
+                })
 ```
 
 According to **holdout method**, combined data, should be split into three groups: **training**, **validation**, and **test** corpus.
@@ -178,6 +160,7 @@ N-gram's frequencies can help:
 Unigram - separate word.
 
 ```{r, echo=F, warning=F, message=F}
+library("RWeka")
 library("data.table")
 library("ggplot2")
 ```

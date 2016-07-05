@@ -28,27 +28,28 @@ Questions to consider:
 ## Exploratory Analysis Results Overview
 
 ```{r, echo=F, warning=F, message=F}
-library("RWeka")
-library("tm")
-library("openNLP")
-library("data.table")
+source("../common/ngram-freq-table.R", chdir=T)
 ```
 
 ```{r}
-corpus <- readRDS("../exploratory-analysis/output/corpus.rds")
-unigram.freq <- readRDS("../exploratory-analysis/output/unigram.freq.rds")
-gram2.freq <- readRDS("../exploratory-analysis/output/gram2.freq.rds")
-gram2.freq[, c("i", "n") := list(NULL, 2)]
-gram3.freq <- readRDS("../exploratory-analysis/output/gram3.freq.rds")
-gram3.freq[, c("i", "n") := list(NULL, 3)]
-gram4.freq <- readRDS("../exploratory-analysis/output/gram4.freq.rds")
-gram4.freq[, c("i", "n") := list(NULL, 4)]
-ngram.freq <- rbind(gram2.freq, gram3.freq, gram4.freq)
+ngram.freq.files <- list.files("../exploratory-analysis/output/freq-table", pattern=".rds$", full.names=T)
+set.seed(123456)
+ngram.freq.files.index <- rbinom(length(ngram.freq.files),
+                                 size=1, prob=0.3) == 1
+sampled.ngram.freq.files <- ngram.freq.files[ngram.freq.files.index]
+cv.ngram.freq.files <- split(sampled.ngram.freq.files,
+        factor(rbinom(length(sampled.ngram.freq.files),
+                      size=1, prob=0.1), levels=c(0, 1)))
+train.freq.table <- CombinePartitions(cv.ngram.freq.files[[1]],
+                                      reduce.f=MergeNGramFreqTables)
+test.freq.table <- CombinePartitions(cv.ngram.freq.files[[2]],
+                                     reduce.f=MergeNGramFreqTables)
+summary(train.freq.table[order(-freq)])
 ```
 
 0. Significant part of dictionary consists of very rare words. So dictionary can be reduced.
 1. For about **6 thousand words** is enough to cover **80%** of corpora.
-2. Most efficient model could cover only **56%** of the language.
+2. Most efficient model could cover only **71%** of the language.
 3. Stemming can help to increase coverage. But this is complicated technique.
 
 Exploratory analysis report is located [here](http://rpubs.com/redneckz/smart-keyboard-exploratory-data-analysis).
@@ -67,7 +68,7 @@ Model is expected to work in mobile environment. That's why memory usage and lat
 
 > With n-gram models it is necessary to find the right trade off between the stability of the estimate against its appropriateness. This means that trigram (i.e. triplets of words) is a common choice with large training corpora (millions of words), whereas a bigram is often used with smaller ones.
 
-According to this approach, **4-grams** dictionary can be some kind of **overkill** relative to the **mobile domain**.
+According to this approach, **5-grams** dictionary can be some kind of **overkill** relative to the **mobile domain**.
 
 ## Handling Unseen N-grams
 
@@ -88,33 +89,36 @@ Different *smoothing* approaches exist:
 
 ## Simple Prediction Model
 
-Let's start with some simple model based on some elements of *Katz's back-off* approach.
+Let's start with some simple model. Without counts smoothing.
 
 ### Model Overview
 
 Algorithm steps:
 
+0. Order n-gram dictionary by frequency.
 1. Clean up provided query (the same way corpora has been cleaned up).
 2. Tokenize and compute number of words.
 3. Choose *n* (for *n-gram*) equals to number of words plus one word.
 4. Search for appropriate *n-grams*.
 5. If nothing found (or less than some coefficient), remove first word from query, and go to the step 3.
-6. Extract *tails* from found *n-grams* and order them by frequency.
+6. Extract last words from found *n-grams* and order them by frequency.
 
-```{r, echo=F, warning=F, message=F}
-library("stringi")
-```
 ```{r, echo=F, message=F, warning=F}
+library("stringi")
 source("../common/clean-corpus.R", chdir=T)
+```
+
+```{r}
+train.freq.table <- train.freq.table[order(-freq)]
 ```
 
 ```{r}
 PredictNextWords <- function(ngram.freq, query, max.ngram.count=5) {
     query.corpus <- CleanCorpus(VCorpus(VectorSource(query)))
     query.corpus.content <- query.corpus[[1]]$content
-    query.words <- NGramTokenizer(query.corpus.content, Weka_control(min=1, max=1))
+    query.words <- stri_extract_all_words(query.corpus.content)[[1]]
     resulting.ngram.freq <- FindNGrams(ngram.freq, query.words, max.ngram.count)
-    return(ExtractNGramsTails(resulting.ngram.freq, query.words))
+    return(resulting.ngram.freq$last.word)
 }
 FindNGrams <- function(ngram.freq, query.words, max.ngram.count,
                        result=data.table()) {
@@ -123,44 +127,23 @@ FindNGrams <- function(ngram.freq, query.words, max.ngram.count,
     }
     target.n <- length(query.words) + 1
     target.query <- paste(query.words, collapse=" ")
-    target.ngram.freq <- head(ngram.freq[(target.n == n) & stri_startswith_fixed(term, target.query)], n=max.ngram.count)
+    target.ngram.freq <- ngram.freq[(target.n == n) & (target.query == first.words)]
     return(FindNGrams(ngram.freq, tail(query.words, n=-1), max.ngram.count,
                       rbind(result, target.ngram.freq)))
 }
-ExtractNGramsTails <- function(ngram.freq, query.words, result=character()) {
-    if (length(query.words) == 0) {
-        return(result)
-    }
-    target.n <- length(query.words) + 1
-    target.query <- paste(query.words, collapse=" ")
-    target.tails <- ngram.freq[target.n == n,
-                               stri_replace_first_fixed(term, target.query, "")]
-    return(ExtractNGramsTails(ngram.freq, tail(query.words, n=-1),
-                              c(result, target.tails)))
-}
 ```
 
-### Smoke Testing
+### Simple Model Smoke Testing
 
 Testing phrase: *I cant wait*
 
 Predicted words:
 
 ```{r}
-PredictNextWords(ngram.freq, "I cant wait", max.ngram.count=10)
+PredictNextWords(train.freq.table, "I cant wait", max.ngram.count=10)
 ```
 
-### Model Profiling
-
-#### Memory usage
-
-```{r}
-format(object.size(ngram.freq), units="MB")
-```
-
-Memory usage is small enough.
-
-#### 2-Gram performance
+### Simple Model Profiling
 
 ```{r}
 ProfilePredictor <- function(predictor, ngram.freq, queries, max.ngram.count=10) {
@@ -177,40 +160,83 @@ ProfilePredictor <- function(predictor, ngram.freq, queries, max.ngram.count=10)
 }
 ```
 
+#### Memory Usage
+
+```{r}
+format(object.size(train.freq.table), units="MB")
+```
+
+Memory usage is small enough.
+
+#### 2-Gram Performance
+
 ```{r}
 gram2.testing.queries <- c("first", "just", "cant", "will", "love")
-gram2.sampling.time <- ProfilePredictor(PredictNextWords, ngram.freq,
+gram2.sampling.time <- ProfilePredictor(PredictNextWords,
+                                        train.freq.table,
                                         queries=gram2.testing.queries)
 print(paste(mean(gram2.sampling.time), "seconds"))
 ```
 
-#### 3-Gram performance
+#### 3-Gram Performance
 
 ```{r}
 gram3.testing.queries <- c("good luck", "one day", "look like", "good morning", 
                            "can get")
-gram3.sampling.time <- ProfilePredictor(PredictNextWords, ngram.freq,
+gram3.sampling.time <- ProfilePredictor(PredictNextWords,
+                                        train.freq.table,
                                         queries=gram3.testing.queries)
 print(paste(mean(gram3.sampling.time), "seconds"))
 ```
 
-#### 4-Gram performance
+#### 4-Gram Performance
 
 ```{r}
 gram4.testing.queries <- c("cant wait see", "dont even know",
                            "new york city", "happy new year",
                            "dont feel like")
-gram4.sampling.time <- ProfilePredictor(PredictNextWords, ngram.freq,
+gram4.sampling.time <- ProfilePredictor(PredictNextWords, 
+                                        train.freq.table,
                                         queries=gram4.testing.queries)
 print(paste(mean(gram4.sampling.time), "seconds"))
 ```
 
 So average latency is acceptable in major cases.
 
-## Further Plans
+### Simple Model Accuracy
 
-1. Estimate simple model accuracy using *Cross Validation* technique.
-2. Build model based on *Markov Chains* and *Katz's Backoff Model*. Models based on *Markov Chains* (dictionary structure) potentially have better performance.
-3. Compare different models to each other.
-4. Create *Shiny* app showing best model in action.
-5. Create brief presentation describing problems and achieved results.
+```{r}
+EstimatePredictorAccuracy <- function(predictor,
+                                      train.freq.table,
+                                      test.freq.table,
+                                      max.ngram.count=10) {
+    most.freq.table <- test.freq.table[n > 1, .SD[which.max(freq)],
+                                       by=first.words]
+    assert <- function(first.words, expected.word) {
+        next.words <- predictor(ngram.freq=train.freq.table,
+                                query=first.words,
+                                max.ngram.count=max.ngram.count)
+        return(any(expected.word == next.words))
+    }
+    assertion.result <- most.freq.table[, assert(first.words,
+                                                 expected.word=last.word),
+                                        by=.I]
+    return(sum(assertion.result) / length(assertion.result))
+}
+```
+
+Accuracy (percent):
+```{r}
+format(EstimatePredictorAccuracy(PredictNextWords,
+                                 train.freq.table,
+                                 test.freq.table) * 100,
+       digits=3)
+```
+
+## Kneser-Ney
+
+> Kneser-Ney evolved from absolute-discounting interpolation, which makes use of both higher-order (i.e., higher-n) and lower-order language models, reallocating some probability mass from 4-grams or 3-grams to simpler unigram models.
+
+```{r}
+
+```

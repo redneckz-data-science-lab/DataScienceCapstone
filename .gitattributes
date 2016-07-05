@@ -22,3 +22,4 @@
 *.woff binary
 *.otf binary
 *.rds binary
+*.sqlite binary

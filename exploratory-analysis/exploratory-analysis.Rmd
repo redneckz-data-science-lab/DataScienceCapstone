@@ -60,11 +60,9 @@ library("stringi")
 GetTextFileStat <- function(file.path) {
     size.mb <- round(file.info(file.path)$size / 1024 / 1024)
     lines <- readLines(file.path, warn=F, skipNul=T)
-    word.count <- sapply(lines, FUN=function(line) {
-        return(length(stri_split_regex(line, "\\s+", simplify=T)))
-    })
+    word.count <- sum(stri_count_words(lines))
     return(list(size.mb=size.mb, line.count=length(lines), 
-                word.count=sum(word.count)))
+                word.count=word.count))
 }
 ```
 
@@ -113,36 +111,27 @@ Following should be cleaned: punctation, numbers, stop wrods, profanity words, s
 ```{r, echo=F, warning=F, message=F}
 source("../common/read-sentences.R", chdir=T)
 source("../common/clean-corpus.R", chdir=T)
-source("../common/partition-corpus.R", chdir=T)
+source("../common/partitioned-corpus.R", chdir=T)
 ```
 
 ```{r}
 chunk.line.count <- 8*1024
 PartitionCorpus(in.dir="./input/", out.dir="./output/cleaned-corpus",
                 chunk.reader=function(con) {
-                    sentences <- ReadSentences(con, chunk.line.count)
-                    corpus <- CleanCorpus(VCorpus(VectorSource(
-                            sentences)))
+                    lines <- readLines(con, n=chunk.line.count,
+                                       warn=F, skipNul=T)
+                    corpus <- CleanCorpus(VCorpus(VectorSource(lines)))
                     return(corpus)
                 },
                 chunk.skiper=function(con) {
-                    readLines(con, n=chunk.line.count, warn=F, skipNul=T)
+                    readLines(con, n=chunk.line.count,
+                              warn=F, skipNul=T)
                 })
 ```
 
 According to **holdout method**, combined data, should be split into three groups: **training**, **validation**, and **test** corpus.
 More complicated techniques, like **k-fold**, need much more time and memory.
  
-```{r}
-if (!file.exists("./output/corpus.rds")) {
-    set.seed(123)
-    corpus <- ReadAndCleanCorpus("./input/", prob=0.05)
-    saveRDS(corpus, "./output/corpus.rds")
-} else {
-    corpus <- readRDS("./output/corpus.rds")
-}
-```
-
 ## N-gram's Frequencies
 
 > *N-gram* is a contiguous sequence of n items from a given sequence of text.
@@ -155,34 +144,53 @@ N-gram's frequencies can help:
 * To optimize dictionaries or other structures used in word prediction.
 * As part of simple word prediction model.
 
+```{r, echo=F, warning=F, message=F}
+library("RWeka")
+```
+
+```{r}
+tokenizer <- function(x) NGramTokenizer(x, Weka_control(min=1, max=4))
+MapPartitions(f=function(corpus) TermDocumentMatrix(corpus, control=list(tokenize=tokenizer)),
+              in.dir="./output/cleaned-corpus",
+              out.dir="./output/term-doc-matrix")
+```
+
+```{r, echo=F, warning=F, message=F}
+source("../common/ngram-freq-table.R", chdir=T)
+```
+
+```{r}
+MapPartitions(f=ToNGramFreqTable,
+              in.dir="./output/term-doc-matrix",
+              out.dir="./output/freq-table")
+```
+
+```{r}
+ngram.freq.files <- list.files("./output/freq-table", pattern=".rds$", full.names=T)
+set.seed(123)
+ngram.freq.files.index <- rbinom(length(ngram.freq.files), size=1, prob=0.05) == 1
+sampled.ngram.freq.files <- ngram.freq.files[ngram.freq.files.index]
+train.freq.table <- CombinePartitions(sampled.ngram.freq.files,
+                                      reduce.f=MergeNGramFreqTables)
+summary(train.freq.table)
+```
+
 ### Unigram's Frequencies
 
 Unigram - separate word.
 
 ```{r, echo=F, warning=F, message=F}
-library("RWeka")
-library("data.table")
 library("ggplot2")
 ```
 
 ```{r}
-ToTermFreqTable <- function (term.doc.matrix) {
-    term.freq <- data.table(i=term.doc.matrix$i, v=term.doc.matrix$v)
-    term.freq <- term.freq[, list(freq=sum(v)), by=i]
-    term.freq <- term.freq[order(freq, decreasing=T)]
-    terms <- Terms(term.doc.matrix)
-    term.freq[, term:=terms[i]]
-    return(term.freq)
-}
-GetNGramsFreq <- function(corpus, n) {
-    tokenizer <- function(x) NGramTokenizer(x, Weka_control(min=n, max=n))
-    return(ToTermFreqTable(TermDocumentMatrix(corpus,
-                                              control=list(tokenize=tokenizer))))
-}
-DrawTopNGrams <- function(ngram.freq, top) {
-    top.ngram.freq <- head(ngram.freq, top)
-    top.ngram.freq$term <- reorder(top.ngram.freq$term, top.ngram.freq$freq)
-    ggplot(top.ngram.freq, aes(x=term, y=freq)) +
+DrawNGrams <- function(ngram.freq) {
+    ordered.ngram.freq <- ngram.freq[, list(ngram=paste(first.words,
+                                                        last.word),
+                                            freq)]
+    ordered.ngram.freq$ngram <- reorder(ordered.ngram.freq$ngram,
+                                        ordered.ngram.freq$freq)
+    ggplot(ordered.ngram.freq, aes(x=ngram, y=freq)) +
             geom_bar(stat="identity") + coord_flip() +
             xlab("N-gram") + ylab("Frequency")
 }
@@ -190,21 +198,15 @@ DrawTopNGrams <- function(ngram.freq, top) {
 
 ```{r, echo=F}
 top.word.count <- 30
-train.corpus <- corpus
 ```
 
 ```{r}
-if (!file.exists("./output/unigram.freq.rds")) {
-    unigram.freq <- GetNGramsFreq(train.corpus, n=1)
-    saveRDS(unigram.freq, "./output/unigram.freq.rds")
-} else {
-    unigram.freq <- readRDS("./output/unigram.freq.rds")
-}
-DrawTopNGrams(unigram.freq, top=top.word.count)
+unigram.freq <- train.freq.table[n == 1][order(-freq)]
+DrawNGrams(head(unigram.freq, top.word.count))
 ```
 
 ```{r}
-hist(unigram.freq$freq, main="Unigram's Frequencies Histogram", breaks=100, xlab="Frequency", ylab="")
+hist(log2(unigram.freq$freq), main="Unigram's Frequencies Histogram", xlab="Log Frequency", ylab="")
 ```
 
 Significant part of dictionary consists of low-frequency words.
@@ -212,17 +214,12 @@ Significant part of dictionary consists of low-frequency words.
 ### 2-Gram's Frequencies
 
 ```{r}
-if (!file.exists("./output/gram2.freq.rds")) {
-    gram2.freq <- GetNGramsFreq(train.corpus, n=2)
-    saveRDS(gram2.freq, "./output/gram2.freq.rds")
-} else {
-    gram2.freq <- readRDS("./output/gram2.freq.rds")
-}
-DrawTopNGrams(gram2.freq, top=top.word.count)
+gram2.freq <- train.freq.table[n == 2][order(-freq)]
+DrawNGrams(head(gram2.freq, top.word.count))
 ```
 
 ```{r}
-hist(gram2.freq$freq, main="2-Ggram's Frequencies Histogram", breaks=100, xlab="Frequency", ylab="")
+hist(log2(gram2.freq$freq), main="2-Ggram's Frequencies Histogram", xlab="Log Frequency", ylab="")
 ```
 
 Similarly to unigram's histogram - here we have a lot of rare terms.
@@ -231,33 +228,23 @@ Obviously 2-gram's frequencies are ~10 times lower than unigram's frequencies, b
 ### 3-Gram's Frequencies
 
 ```{r}
-if (!file.exists("./output/gram3.freq.rds")) {
-    gram3.freq <- GetNGramsFreq(train.corpus, n=3)
-    saveRDS(gram3.freq, "./output/gram3.freq.rds")
-} else {
-    gram3.freq <- readRDS("./output/gram3.freq.rds")
-}
-DrawTopNGrams(gram3.freq, top=top.word.count)
+gram3.freq <- train.freq.table[n == 3][order(-freq)]
+DrawNGrams(head(gram3.freq, top.word.count))
 ```
 
 ```{r}
-hist(gram3.freq$freq, main="3-Ggram's Frequencies Histogram", breaks=100, xlab="Frequency", ylab="")
+hist(log2(gram3.freq$freq), main="3-Ggram's Frequencies Histogram", xlab="Log Frequency", ylab="")
 ```
 
 ### 4-Gram's Frequencies
 
 ```{r}
-if (!file.exists("./output/gram4.freq.rds")) {
-    gram4.freq <- GetNGramsFreq(train.corpus, n=4)
-    saveRDS(gram4.freq, "./output/gram4.freq.rds")
-} else {
-    gram4.freq <- readRDS("./output/gram4.freq.rds")
-}
-DrawTopNGrams(gram4.freq, top=top.word.count)
+gram4.freq <- train.freq.table[n == 4][order(-freq)]
+DrawNGrams(head(gram4.freq, top.word.count))
 ```
 
 ```{r}
-hist(gram4.freq$freq, main="4-Ggram's Frequencies Histogram", breaks=100, xlab="Frequency", ylab="")
+hist(log2(gram4.freq$freq), main="4-Ggram's Frequencies Histogram", xlab="Log Frequency", ylab="")
 ```
 
 ## Coverage
@@ -270,7 +257,8 @@ How dictionary size impacts corpora coverage?
 
 ```{r}
 dictionary.size.to.coverage <- cumsum(unigram.freq$freq * 100 / sum(unigram.freq$freq))
-plot(x=1:length(dictionary.size.to.coverage), y=dictionary.size.to.coverage,
+plot(x=1:length(dictionary.size.to.coverage),
+     y=dictionary.size.to.coverage,
      type="l", main="Coverage", xlab="Dictionary Size (words)", ylab="Coverage (percent)")
 ```
 
@@ -299,33 +287,6 @@ print(which(dictionary.size.to.coverage > 70)[[1]])
 > Stemming is the process of reducing inflected (or sometimes derived) words to their word stem, base or root form—generally a written word form
 
 Stemming can help to increase coverage and reduce dictionary size. But the result of the prediction should be some word, not word stem. So each stem should be assigned to some set of words. Such complicated technique should be justified by its high efficiency.
-
-Stem's frequencies:
-
-```{r}
-if (!file.exists("./output/stemmed.corpus.rds")) {
-    stemmed.corpus <- tm_map(train.corpus, stemDocument, language="english")
-    saveRDS(stemmed.corpus, "./output/stemmed.corpus.rds")
-} else {
-    stemmed.corpus <- readRDS("./output/stemmed.corpus.rds")
-}
-if (!file.exists("./output/stemmed.unigram.freq.rds")) {
-    stemmed.unigram.freq <- GetNGramsFreq(stemmed.corpus, n=1)
-    saveRDS(stemmed.unigram.freq, "./output/stemmed.unigram.freq.rds")
-} else {
-    stemmed.unigram.freq <- readRDS("./output/stemmed.unigram.freq.rds")
-}
-DrawTopNGrams(stemmed.unigram.freq, top=top.word.count)
-```
-
-```{r}
-old.par <- par(mfrow = c(2, 1))
-hist(stemmed.unigram.freq$freq, main="Stem's Frequencies Histogram", breaks=100, xlab="", ylab="")
-hist(unigram.freq$freq, main="Unigram's Frequencies Histogram", breaks=100, xlab="Frequency", ylab="")
-par(old.par)
-```
-
-So dictionary after stemming becomes smaller. And coverage should be at least the same. Frequency distributions are the same.
 
 ### Language Coverage
 
@@ -358,10 +319,10 @@ Probability is very low. Some rough estimation is needed.
 
 ```{r, echo=F}
 word.in.use.count <- 171476
-lang.cov.vs.corpus.cov <- round(word.in.use.count / nrow(stemmed.unigram.freq), 1)
+lang.cov.vs.corpus.cov <- round(word.in.use.count / nrow(unigram.freq), 1)
 ```
 
-Number of stems in dictionary equals to **`r nrow(stemmed.unigram.freq)`**.
+Number of words in dictionary equals to **`r nrow(unigram.freq)`**.
 So language coverage could be astimated as **less** than corpus coverage for about **`r lang.cov.vs.corpus.cov`** times.
 
 ## Conclusions

@@ -115,7 +115,7 @@ source("../common/partitioned-corpus.R", chdir=T)
 ```
 
 ```{r}
-chunk.line.count <- 8*1024
+chunk.line.count <- 8L*1024L
 PartitionCorpus(in.dir="./input/", out.dir="./output/cleaned-corpus",
                 chunk.reader=function(con) {
                     lines <- readLines(con, n=chunk.line.count,
@@ -149,7 +149,7 @@ library("RWeka")
 ```
 
 ```{r}
-tokenizer <- function(x) NGramTokenizer(x, Weka_control(min=1, max=4))
+tokenizer <- function(x) NGramTokenizer(x, Weka_control(min=1L, max=4L))
 MapPartitions(f=function(corpus) TermDocumentMatrix(corpus, control=list(tokenize=tokenizer)),
               in.dir="./output/cleaned-corpus",
               out.dir="./output/term-doc-matrix")
@@ -167,8 +167,8 @@ MapPartitions(f=ToNGramFreqTable,
 
 ```{r}
 ngram.freq.files <- list.files("./output/freq-table", pattern=".rds$", full.names=T)
-set.seed(123)
-ngram.freq.files.index <- rbinom(length(ngram.freq.files), size=1, prob=0.05) == 1
+set.seed(123L)
+ngram.freq.files.index <- rbinom(length(ngram.freq.files), size=1L, prob=0.05) == 1L
 sampled.ngram.freq.files <- ngram.freq.files[ngram.freq.files.index]
 train.freq.table <- CombinePartitions(sampled.ngram.freq.files,
                                       reduce.f=MergeNGramFreqTables)
@@ -214,7 +214,7 @@ Significant part of dictionary consists of low-frequency words.
 ### 2-Gram's Frequencies
 
 ```{r}
-gram2.freq <- train.freq.table[n == 2][order(-freq)]
+gram2.freq <- train.freq.table[n == 2L][order(-freq)]
 DrawNGrams(head(gram2.freq, top.word.count))
 ```
 
@@ -228,7 +228,7 @@ Obviously 2-gram's frequencies are ~10 times lower than unigram's frequencies, b
 ### 3-Gram's Frequencies
 
 ```{r}
-gram3.freq <- train.freq.table[n == 3][order(-freq)]
+gram3.freq <- train.freq.table[n == 3L][order(-freq)]
 DrawNGrams(head(gram3.freq, top.word.count))
 ```
 
@@ -239,7 +239,7 @@ hist(log2(gram3.freq$freq), main="3-Ggram's Frequencies Histogram", xlab="Log Fr
 ### 4-Gram's Frequencies
 
 ```{r}
-gram4.freq <- train.freq.table[n == 4][order(-freq)]
+gram4.freq <- train.freq.table[n == 4L][order(-freq)]
 DrawNGrams(head(gram4.freq, top.word.count))
 ```
 

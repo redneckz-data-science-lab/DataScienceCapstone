@@ -37,7 +37,7 @@ source("../common/ngram-freq-table.R", chdir=T)
     ngram.freq.files <- list.files("../exploratory-analysis/output/freq-table",
                                    pattern=".rds$", full.names=T)
     file.count <- length(ngram.freq.files)
-    group.count <- 5 # Memory/performance trade-off
+    group.count <- 5L # Memory/performance trade-off
     group.size <- ceiling(file.count / group.count)
     ngram.freq.files.groups <<- split(ngram.freq.files,
                                       f=rep(1:group.count,
@@ -49,18 +49,18 @@ Training data contains a lot of very rare n-grams, so can be cleaned after loadi
 
 ```{r}
     CombineNgramFreqTablesGroups <- function(files.groups) {
-        ngram.freq.table <- ComputeNgramFreqTablesGroup(files.groups[[1]])
-        for (files.group in files.groups[-1]) {
+        ngram.freq.table <- ComputeNgramFreqTablesGroup(files.groups[[1L]])
+        for (files.group in files.groups[-1L]) {
             ngram.freq.table <- MergeNGramFreqTables(
                     ngram.freq.table,
                     ComputeNgramFreqTablesGroup(files.group))
         }
-        return(ngram.freq.table[freq > 1])
+        return(ngram.freq.table[freq > 1L])
     }
     ComputeNgramFreqTablesGroup <- function(files.group) {
         ngram.freq.table <- CombinePartitions(files.group,
                                               reduce.f=MergeNGramFreqTables)
-        return(ngram.freq.table[freq > 1])
+        return(ngram.freq.table[freq > 1L])
     }
 ```
 
@@ -71,6 +71,7 @@ if (!file.exists("./output/train.freq.table.rds")) {
 } else {
     train.freq.table <- readRDS("./output/train.freq.table.rds")
 }
+train.freq.table[, freq := as.integer(freq)] # Adjust type
 summary(train.freq.table)
 ```
 
@@ -78,16 +79,17 @@ Test data should contain only the most frequent n-grams.
 
 ```{r}
 if (!file.exists("./output/test.freq.table.rds")) {
-    set.seed(123456)
+    set.seed(123456L)
     test.files.group <- sapply(ngram.freq.files.groups,
-                               function(files.group) sample(files.group, 1))
+                               function(files.group) sample(files.group, 1L))
     test.freq.table <- ComputeNgramFreqTablesGroup(test.files.group)
-    test.freq.table <- test.freq.table[n > 1, .SD[which.max(freq)],
+    test.freq.table <- test.freq.table[n > 1L, .SD[which.max(freq)],
                                        by=first.words]
     saveRDS(test.freq.table, "./output/test.freq.table.rds")
 } else {
     test.freq.table <- readRDS("./output/test.freq.table.rds")
 }
+test.freq.table[, freq := as.integer(freq)] # Adjust type
 summary(test.freq.table)
 ```
 
@@ -148,33 +150,7 @@ Algorithm steps:
 6. Extract last words from found *n-grams* and order them by frequency.
 
 ```{r, echo=F, message=F, warning=F}
-library("stringi")
-source("../common/clean-corpus.R", chdir=T)
-```
-
-```{r}
-train.freq.table <- train.freq.table[order(-freq)]
-```
-
-```{r}
-PredictNextWords <- function(ngram.freq, query, max.ngram.count=5) {
-    query.corpus <- CleanCorpus(VCorpus(VectorSource(query)))
-    query.corpus.content <- query.corpus[[1]]$content
-    query.words <- stri_extract_all_words(query.corpus.content)[[1]]
-    resulting.ngram.freq <- FindNGrams(ngram.freq, query.words, max.ngram.count)
-    return(resulting.ngram.freq$last.word)
-}
-FindNGrams <- function(ngram.freq, query.words, max.ngram.count,
-                       result=data.table()) {
-    if ((length(query.words) == 0) || (nrow(result) >= max.ngram.count)) {
-        return(head(result, n=max.ngram.count))
-    }
-    target.n <- length(query.words) + 1
-    target.query <- paste(query.words, collapse=" ")
-    target.ngram.freq <- ngram.freq[(target.n == n) & (target.query == first.words)]
-    return(FindNGrams(ngram.freq, tail(query.words, n=-1), max.ngram.count,
-                      rbind(result, target.ngram.freq)))
-}
+source("../common/predict-next-words.R", chdir=T)
 ```
 
 ### Simple Model Smoke Testing
@@ -184,18 +160,19 @@ Testing phrase: *I cant wait*
 Predicted words:
 
 ```{r}
-PredictNextWords(train.freq.table, "I cant wait", max.ngram.count=10)
+PredictNextWords(train.freq.table, "I cant wait",
+                 result.prepare.strategy=function(result) result$last.word)
 ```
 
 ### Simple Model Profiling
 
 ```{r}
-ProfilePredictor <- function(predictor, ngram.freq, queries, max.ngram.count=10) {
+ProfilePredictor <- function(predictor, ngram.freq, queries, max.ngram.count=10L) {
     tmp.file <- tempfile()
     sampling.time <- sapply(queries, FUN=function(query) {
         Rprof(tmp.file)
-        do.call(predictor, list(ngram.freq=ngram.freq, query=query,
-                max.ngram.count=max.ngram.count))
+        do.call(predictor, list(ngram.freq=ngram.freq, query.text=query,
+                                max.ngram.count=max.ngram.count))
         Rprof(NULL)
         return(summaryRprof(tmp.file)$sampling.time)
     })
@@ -255,12 +232,12 @@ N-grams approach has fundamental disadvantage in context of unseen terms. So acc
 EstimatePredictorAccuracy <- function(predictor,
                                       train.freq.table,
                                       test.freq.table,
-                                      max.ngram.count=10) {
+                                      max.ngram.count=10L) {
     assert <- function(first.words, expected.word) {
-        next.words <- predictor(ngram.freq=train.freq.table,
-                                query=first.words,
-                                max.ngram.count=max.ngram.count)
-        return(any(expected.word == next.words))
+        next.words.freq.table <- predictor(ngram.freq=train.freq.table,
+                                           query.text=first.words,
+                                           max.ngram.count=max.ngram.count)
+        return(any(expected.word == next.words.freq.table$last.word))
     }
     assertion.result <- test.freq.table[, assert(first.words, last.word),
                                         by=1:nrow(test.freq.table)]$V1
@@ -273,7 +250,7 @@ Accuracy (percent):
 format(EstimatePredictorAccuracy(PredictNextWords,
                                  train.freq.table,
                                  test.freq.table) * 100,
-       digits=3)
+       digits=3L)
 ```
 
 ```{r}
@@ -292,13 +269,13 @@ test.quiz.1 <- list("The guy in front of me just bought a pound of bacon, a bouq
 ```{r}
 TestPredictorAgainstQuiz <- function(predictor, train.freq.table,
          test.quiz,
-         max.ngram.count=10) {
+         max.ngram.count=10L) {
     return(sapply(names(test.quiz), function(query) {
         expected.next.words <- test.quiz[[query]]
-        next.words <- predictor(ngram.freq=train.freq.table,
-                                query=query,
-                                max.ngram.count=max.ngram.count)
-        return(intersect(expected.next.words, next.words))
+        next.words.freq.table <- predictor(ngram.freq=train.freq.table,
+                                           query.text=query,
+                                           max.ngram.count=max.ngram.count)
+        return(next.words.freq.table[last.word %in% expected.next.words])
     }))
 }
 ```

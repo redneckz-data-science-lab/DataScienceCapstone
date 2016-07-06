@@ -2,8 +2,8 @@
     CombinePartitions <<- function(partition.files,
                                    map.f=identity, reduce.f=c) {
         read <- function(in.file.path) map.f(readRDS(in.file.path))
-        acc <- read(head(partition.files, 1))
-        for (in.file.path in tail(partition.files, -1)) {
+        acc <- read(head(partition.files, 1L))
+        for (in.file.path in tail(partition.files, -1L)) {
             acc <- reduce.f(acc, read(in.file.path))
         }
         return(acc)
@@ -39,7 +39,7 @@
     PartitionCorpusFile <- function(in.file.path, out.dir,
                                     chunk.reader, chunk.skiper) {
         in.con <- file(in.file.path, "r")
-        chunk.count <- 0
+        chunk.count <- 0L
         repeat {
             out.file.path <- file.path(out.dir,
                                        paste(basename(in.file.path),
@@ -48,12 +48,12 @@
                 chunk.skiper(in.con)
             } else {
                 chunk <- chunk.reader(in.con)
-                if (length(chunk) == 0) {
+                if (length(chunk) == 0L) {
                     break
                 }
                 saveRDS(chunk, file=out.file.path)
             }
-            chunk.count <- chunk.count + 1
+            chunk.count <- chunk.count + 1L
         }
         close(in.con)
     }

@@ -37,7 +37,7 @@ source("../common/ngram-freq-table.R", chdir=T)
     ngram.freq.files <- list.files("../exploratory-analysis/output/freq-table",
                                    pattern=".rds$", full.names=T)
     file.count <- length(ngram.freq.files)
-    group.count <- 5L # Memory/performance trade-off
+    group.count <- 4L # Memory/performance trade-off
     group.size <- ceiling(file.count / group.count)
     ngram.freq.files.groups <<- split(ngram.freq.files,
                                       f=rep(1:group.count,
@@ -45,7 +45,7 @@ source("../common/ngram-freq-table.R", chdir=T)
 })()
 ```
 
-Training data contains a lot of very rare n-grams, so can be cleaned after loading.
+Training data contains a lot of very rare n-grams, so can be cleaned after loading. For example, rare (frequency equals to one) unigrams and bigrams can be discarded. Because 3-grams and 4-grams are outnumbered.
 
 ```{r}
     CombineNgramFreqTablesGroups <- function(files.groups) {
@@ -55,12 +55,12 @@ Training data contains a lot of very rare n-grams, so can be cleaned after loadi
                     ngram.freq.table,
                     ComputeNgramFreqTablesGroup(files.group))
         }
-        return(ngram.freq.table[freq > 1L])
+        return(ngram.freq.table)
     }
     ComputeNgramFreqTablesGroup <- function(files.group) {
         ngram.freq.table <- CombinePartitions(files.group,
                                               reduce.f=MergeNGramFreqTables)
-        return(ngram.freq.table[freq > 1L])
+        return(ngram.freq.table[(n < 3L) & (freq > 1L)])
     }
 ```
 
@@ -72,6 +72,7 @@ if (!file.exists("./output/train.freq.table.rds")) {
     train.freq.table <- readRDS("./output/train.freq.table.rds")
 }
 train.freq.table[, freq := as.integer(freq)] # Adjust type
+setkey(train.freq.table, first.words, last.word, n)
 summary(train.freq.table)
 ```
 
@@ -90,6 +91,7 @@ if (!file.exists("./output/test.freq.table.rds")) {
     test.freq.table <- readRDS("./output/test.freq.table.rds")
 }
 test.freq.table[, freq := as.integer(freq)] # Adjust type
+setkey(test.freq.table, first.words, last.word, n)
 summary(test.freq.table)
 ```
 
@@ -189,40 +191,22 @@ format(object.size(train.freq.table), units="MB")
 
 Memory usage is small enough.
 
-#### 2-Gram Performance
+#### Performance
 
 ```{r}
-gram2.testing.queries <- c("first", "just", "cant", "will", "love")
-gram2.sampling.time <- ProfilePredictor(PredictNextWords,
-                                        train.freq.table,
-                                        queries=gram2.testing.queries)
-print(paste(mean(gram2.sampling.time), "seconds"))
-```
-
-#### 3-Gram Performance
-
-```{r}
-gram3.testing.queries <- c("good luck", "one day", "look like", "good morning", 
-                           "can get")
-gram3.sampling.time <- ProfilePredictor(PredictNextWords,
-                                        train.freq.table,
-                                        queries=gram3.testing.queries)
-print(paste(mean(gram3.sampling.time), "seconds"))
-```
-
-#### 4-Gram Performance
-
-```{r}
-gram4.testing.queries <- c("cant wait see", "dont even know",
+ngram.testing.queries <- c("first", "just", "cant", "will", "love",
+                           "good luck", "one day", "look like", "good morning", 
+                           "can get",
+                           "cant wait see", "dont even know",
                            "new york city", "happy new year",
                            "dont feel like")
-gram4.sampling.time <- ProfilePredictor(PredictNextWords, 
+ngram.sampling.time <- ProfilePredictor(PredictNextWords,
                                         train.freq.table,
-                                        queries=gram4.testing.queries)
-print(paste(mean(gram4.sampling.time), "seconds"))
+                                        queries=ngram.testing.queries)
+print(paste(round(mean(ngram.sampling.time), 3), "seconds"))
 ```
 
-So average latency is acceptable in major cases.
+So average latency is acceptable in most cases.
 
 ### Simple Model Accuracy
 
@@ -253,6 +237,8 @@ format(EstimatePredictorAccuracy(PredictNextWords,
        digits=3L)
 ```
 
+### Simple Model Quiz
+
 ```{r}
 test.quiz.1 <- list("The guy in front of me just bought a pound of bacon, a bouquet, and a case of" = c("pretzels", "soda", "beer", "cheese"),
                     "You're the reason why I smile everyday. Can you follow me please? It would mean the" = c("most", "world", "universe", "best"),
@@ -269,24 +255,30 @@ test.quiz.1 <- list("The guy in front of me just bought a pound of bacon, a bouq
 ```{r}
 TestPredictorAgainstQuiz <- function(predictor, train.freq.table,
          test.quiz,
-         max.ngram.count=10L) {
-    return(sapply(names(test.quiz), function(query) {
+         max.ngram.count=500L) {
+    res <- lapply(names(test.quiz), FUN=function(query) {
         expected.next.words <- test.quiz[[query]]
         next.words.freq.table <- predictor(ngram.freq=train.freq.table,
                                            query.text=query,
                                            max.ngram.count=max.ngram.count)
-        return(next.words.freq.table[last.word %in% expected.next.words])
-    }))
+        return(next.words.freq.table[, .(next.words=intersect(last.word,
+                                                              expected.next.words),
+                                         rating.position=which(last.word %in%
+                                                                   expected.next.words))])
+    })
+    names(res) <- names(test.quiz)
+    return(res)
 }
 ```
 
 ```{r}
-TestPredictorAgainstQuiz(PredictNextWords,
-                         train.freq.table,
-                         test.quiz.1)
+simple.predict.quiz.result <- TestPredictorAgainstQuiz(PredictNextWords,
+                                                       train.freq.table,
+                                                       test.quiz.1)
+print(simple.predict.quiz.result)
 ```
 
-## Kneser-Ney
+## Kneser-Ney Based Model
 
 > Kneser-Ney evolved from absolute-discounting interpolation, which makes use of both higher-order (i.e., higher-n) and lower-order language models, reallocating some probability mass from 4-grams or 3-grams to simpler unigram models.
 
@@ -295,5 +287,73 @@ source("../common/kneser-ney.R", chdir=T)
 ```
 
 ```{r}
-SmoothNgramFreqTableByKneserNey(train.freq.table)
+if (!file.exists("./output/kn.train.freq.table.rds")) {
+    kn.train.freq.table <- SmoothNgramFreqTableByKneserNey(train.freq.table)
+    saveRDS(kn.train.freq.table, "./output/kn.train.freq.table.rds")
+} else {
+    kn.train.freq.table <- readRDS("./output/kn.train.freq.table.rds")
+}
 ```
+
+### Kneser-Ney Model Smoke Testing
+
+Testing phrase: *I cant wait*
+
+Predicted words:
+
+```{r}
+PredictNextWordsByKneserNey(kn.train.freq.table, "I cant wait",
+                            result.prepare.strategy=function(result)
+                                result$last.word)
+```
+
+### Kneser-Ney Model Profiling
+
+#### Memory Usage
+
+```{r}
+format(object.size(kn.train.freq.table), units="MB")
+```
+
+Memory usage is small enough.
+
+#### Performance
+
+```{r}
+ngram.sampling.time <- ProfilePredictor(PredictNextWordsByKneserNey,
+                                        kn.train.freq.table,
+                                        queries=ngram.testing.queries)
+print(paste(round(mean(ngram.sampling.time), 3), "seconds"))
+```
+
+So average latency is acceptable in most cases.
+
+### Kneser-Ney Model Quiz
+
+```{r}
+kn.predict.quiz.result <- TestPredictorAgainstQuiz(PredictNextWordsByKneserNey,
+                                                   kn.train.freq.table,
+                                                   test.quiz.1)
+print(kn.predict.quiz.result)
+```
+
+### Compare Kneser-Ney to Simple Model by Quiz
+
+```{r}
+ComparePredictorsByQuiz <- function(quiz.result.a, quiz.result.b) {
+    return(lapply(names(quiz.result.a), function(query) {
+        a <- quiz.result.a[[query]][1]
+        b <- quiz.result.b[[query]][1]
+        return(data.frame(a=a$next.words, b=b$next.words,
+                          rating.delta=a$rating.position - b$rating.position))
+    }))
+}
+```
+
+```{r}
+ComparePredictorsByQuiz(simple.predict.quiz.result, kn.predict.quiz.result)
+```
+
+Delta rating field shows difference in prediction result position between simple predictor and Kneser-Ney based predictor. The closer position to the begining of the list, the better algorithm.
+
+According to comparison results Kneser-Ney smoothing has no effect in most cases.

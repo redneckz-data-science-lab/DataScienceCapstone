@@ -4,10 +4,10 @@
     library("stringi", quietly=T)
     
     MergeNGramFreqTables <<- function(x, y) {
-        res <- merge(x, y, by=c("first.words", "last.word", "n"), all=T)
-        res[is.na(freq.x), freq.x := 0L]
-        res[is.na(freq.y), freq.y := 0L]
-        res[, freq := freq.x + freq.y]
+        setkey(x, first.words, last.word, n)
+        setkey(y, first.words, last.word, n)
+        res <- merge(x, y, all=T)
+        res[, freq := AdjustNAs(freq.x) + AdjustNAs(freq.y)]
         res[, freq.x := NULL]
         res[, freq.y := NULL]
         return(res)
@@ -27,4 +27,6 @@
         setkey(ngram.freq, first.words, last.word)
         return(ngram.freq)
     }
+    
+    AdjustNAs <- function(v, def.val=0L) ifelse(is.na(v), def.val, v)
 })()

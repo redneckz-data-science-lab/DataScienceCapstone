@@ -13,10 +13,10 @@
         query.variants <- query.variate.strategy(query.tokenize.strategy(query.text))
         result <- Reduce(function(result, query) {
             if (nrow(result) < max.ngram.count) {
-                return(FindNGramsByQuery(ngram.freq, query,
-                                         string.eq.strategy,
-                                         ordering.strategy,
-                                         max.ngram.count))
+                return(rbind(result, FindNGramsByQuery(ngram.freq, query,
+                                                       string.eq.strategy,
+                                                       ordering.strategy,
+                                                       max.ngram.count)))
             } else {
                 return(result)
             }
@@ -47,7 +47,7 @@
     VariateQueryByBackOff <<- function(query, max.n=4L) Map(function(i) tail(query, i),
                                                             min(max.n, length(query)):1)
     
-    StringEq <- function(a, b) a == b
+    StringEq <<- function(a, b) a == b
     
     OrderByFreq <- function(ngram.freq) ngram.freq[order(-freq)]
 })()

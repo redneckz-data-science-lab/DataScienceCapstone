@@ -61,7 +61,7 @@ And the **response time** (thanks to *data.table*) of the predictor is **< 1 sec
 Shiny App
 ========================================================
 
-
+Shiny app is located [here](https://redneckz.shinyapps.io/DataScienceCapstone/).
 
 Thank You for Your Attention
 ========================================================
@@ -81,3 +81,4 @@ R Packages:
 2. Text mining package - [tm](https://cran.r-project.org/web/packages/tm/index.html)
 3. Collection of machine learning algorithms -  [RWeka](https://cran.r-project.org/web/packages/RWeka/index.html)
 4. String processing facilities - [stringi](https://cran.r-project.org/web/packages/stringi/index.html)
+5. String distance functions - [stringdist](https://cran.r-project.org/web/packages/stringdist/index.html)

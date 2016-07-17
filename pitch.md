@@ -4,22 +4,13 @@ author: Alexander Alexandrov
 date: Thursday, July 07, 2016
 autosize: true
 
-Introduction
-========================================================
+Smart keyboard makes it easier for people to type on their mobile devices. One cornerstone of smart keyboard is predictive text models.
 
-Around the world, people are spending an increasing amount of time on their mobile devices for email, social networking, and etc. Smart keyboard makes it easier for people to type on their mobile devices. One cornerstone of smart keyboard is predictive text models.
+When someone types: **I went to the**
 
-When someone types:
+The keyboard presents several options: **gym, store, restaurant**
 
-**I went to the**
-
-the keyboard presents several options for what the next word might be. For example:
-
-**gym, store, restaurant**
-
-This project is aimed on building predictive text models like those used by **SwiftKey**.
-
-Predictive Model / Training Data
+Predictive Model / Data
 ========================================================
 
 Training data is represented by "raw" text from blogs, news, and twitter:
@@ -32,17 +23,10 @@ Training data is represented by "raw" text from blogs, news, and twitter:
 
 Data was cleaned from punctation, numbers, stop wrods, profanity words, swear words, URLs, emails, accounts. Because such stuff does not make sense in context of word prediction.
 
-And after **exploratory analysis** following conclusions was done:
-
-1. Significant part of dictionary consists of very rare words. So dictionary can be reduced.
-2. For about **6 thousand words** is enough to cover **80%** of corpora.
-3. Most efficient model could cover only **71%** of the language.
-4. Stemming can help to increase coverage. But this is complicated technique.
+Algorithm is based on n-gram frequency dictionary. According to exploratory analysis dictionary has been cleaned from rare n-grams to reduce memory usage and increase performance.
 
 Predictive Model / Algorithm
 ========================================================
-
-Different algorithms have been treated. The most simple wins:
 
 1. Clean up provided query (the same way corpora has been cleaned up).
 2. Tokenize and compute number of words.
@@ -51,34 +35,26 @@ Different algorithms have been treated. The most simple wins:
 5. If nothing found (or less than some coefficient), remove first word from query, and go to the step 3.
 6. Last words of found *n-grams* represent the prediciton result.
 
-Performance
-========================================================
-
-Because of huge amount of very rare n-grams, the **dictionary size** has been reduced to **~150 Mb**.
-
-And the **response time** (thanks to *data.table*) of the predictor is **< 1 sec**
-
 Shiny App
 ========================================================
 
-Shiny app is located [here](https://redneckz.shinyapps.io/DataScienceCapstone/).
+[Shiny App](https://redneckz.shinyapps.io/DataScienceCapstone/)
+
+Features:
+
+1. **Result View Modes**.
+2. **Kneser-Ney** smoothing.
+3. **String Metrics** to deal with typos.
+
+Manual:
+
+1. Wait dictionary load in **~5 sec**.
+2. Eneter some text and explore results in **< 1 sec**.
 
 Thank You for Your Attention
 ========================================================
 
-I've found following links useful while working on this project.
+More information can be found in reports:
 
-Theory:
-
-1. [N-gram](https://en.wikipedia.org/wiki/N-gram)
-2. [Knser-Ney Smoothing](https://en.wikipedia.org/wiki/Kneser%E2%80%93Ney_smoothing)
-3. [Good Turing Smoothing](https://en.wikipedia.org/wiki/Good%E2%80%93Turing_frequency_estimation)
-4. [Katz's back-off model](https://en.wikipedia.org/wiki/Katz%27s_back-off_model)
-
-R Packages:
-
-1. Fast and efficient data.frame extension -  [data.table](https://cran.r-project.org/web/packages/data.table/index.html)
-2. Text mining package - [tm](https://cran.r-project.org/web/packages/tm/index.html)
-3. Collection of machine learning algorithms -  [RWeka](https://cran.r-project.org/web/packages/RWeka/index.html)
-4. String processing facilities - [stringi](https://cran.r-project.org/web/packages/stringi/index.html)
-5. String distance functions - [stringdist](https://cran.r-project.org/web/packages/stringdist/index.html)
+1. [Exploratory Data Analysis Report](http://rpubs.com/redneckz/smart-keyboard-exploratory-data-analysis).
+2. [Basic Modeling Report](http://rpubs.com/redneckz/smart-keyboard-basic-modeling).

@@ -27,25 +27,34 @@ Questions to consider:
 
 ## Exploratory Analysis Results Overview
 
+Exploratory analysis report is located [here](http://rpubs.com/redneckz/smart-keyboard-exploratory-data-analysis).
+
+1. Significant part of dictionary consists of very rare words. So dictionary can be reduced.
+2. Corpus coverage has logarithmic dependency on dictionary size.
+3. Most efficient model could cover only **~70%** of the language.
+4. Stemming can help to increase coverage. But this is complicated technique.
+
+Lets load n-gram frequency dictionary (for training) and clean up it from very rare n-grmas. For example, rare (frequency equals to one) unigrams and bigrams can be discarded. Because 3-grams and 4-grams are outnumbered.
+
 ```{r, echo=F, warning=F, message=F}
 source("../common/partitioned-corpus.R", chdir=T)
 source("../common/ngram-freq-table.R", chdir=T)
 ```
 
 ```{r}
-(function() {
-    ngram.freq.files <- list.files("../exploratory-analysis/output/freq-table",
-                                   pattern=".rds$", full.names=T)
-    file.count <- length(ngram.freq.files)
-    group.count <- 4L # Memory/performance trade-off
-    group.size <- ceiling(file.count / group.count)
-    ngram.freq.files.groups <<- split(ngram.freq.files,
-                                      f=rep(1:group.count,
-                                            each=group.size)[1:file.count])
-})()
+ngram.freq.files.groups <- list(
+    list.files("../exploratory-analysis/output/freq-table",
+               pattern="twitter\\.txt\\.[02-9]\\d*\\.rds$", full.names=T),
+    list.files("../exploratory-analysis/output/freq-table",
+               pattern="twitter\\.txt\\.1\\d*\\.rds$", full.names=T),
+    list.files("../exploratory-analysis/output/freq-table",
+               pattern="blogs\\.txt\\.[0-4]\\d*\\.rds$", full.names=T),
+    list.files("../exploratory-analysis/output/freq-table",
+               pattern="blogs\\.txt\\.[5-9]\\d*\\.rds$", full.names=T),
+    list.files("../exploratory-analysis/output/freq-table",
+               pattern="news\\.txt\\.\\d+\\.rds$", full.names=T)
+)
 ```
-
-Training data contains a lot of very rare n-grams, so can be cleaned after loading. For example, rare (frequency equals to one) unigrams and bigrams can be discarded. Because 3-grams and 4-grams are outnumbered.
 
 ```{r}
     CombineNgramFreqTablesGroups <- function(files.groups) {
@@ -60,7 +69,7 @@ Training data contains a lot of very rare n-grams, so can be cleaned after loadi
     ComputeNgramFreqTablesGroup <- function(files.group) {
         ngram.freq.table <- CombinePartitions(files.group,
                                               reduce.f=MergeNGramFreqTables)
-        return(ngram.freq.table[(n < 3L) & (freq > 1L)])
+        return(ngram.freq.table[(n >= 3L) | ((n < 3L) & (freq > 1L))])
     }
 ```
 
@@ -71,12 +80,11 @@ if (!file.exists("./output/train.freq.table.rds")) {
 } else {
     train.freq.table <- readRDS("./output/train.freq.table.rds")
 }
-train.freq.table[, freq := as.integer(freq)] # Adjust type
 setkey(train.freq.table, first.words, last.word, n)
 summary(train.freq.table)
 ```
 
-Test data should contain only the most frequent n-grams.
+Also some test set should be loaded to estimate algorithm accuracy.
 
 ```{r}
 if (!file.exists("./output/test.freq.table.rds")) {
@@ -90,27 +98,19 @@ if (!file.exists("./output/test.freq.table.rds")) {
 } else {
     test.freq.table <- readRDS("./output/test.freq.table.rds")
 }
-test.freq.table[, freq := as.integer(freq)] # Adjust type
 setkey(test.freq.table, first.words, last.word, n)
 summary(test.freq.table)
 ```
-
-0. Significant part of dictionary consists of very rare words. So dictionary can be reduced.
-1. For about **6 thousand words** is enough to cover **80%** of corpora.
-2. Most efficient model could cover only **71%** of the language.
-3. Stemming can help to increase coverage. But this is complicated technique.
-
-Exploratory analysis report is located [here](http://rpubs.com/redneckz/smart-keyboard-exploratory-data-analysis).
 
 ## Model Effectiveness Criteria
 
 Model is expected to work in mobile environment. That's why memory usage and latency are the most important criteria. Let's fix the following constraints:
 
-0. **Accuracy** > 50%.
-1. **Memory usage** < 1 Gb.
-2. **Latency** < 3 sec.
+1. **Accuracy** > 70%.
+2. **Memory usage** < 300 Mb.
+3. **Latency** < 1 sec.
 
-**Accuracy** can be estimated by means of splitting into training and testing sets. Or by means of more complicated techniques. For example, *Cross Validation*.
+**Accuracy** can be estimated by means of **holdout method**. Data should be split into groups: **training** and **test** corpus. So trained algorithm should be treated against test corpus.
 
 ## Model Common Parameters
 
@@ -120,7 +120,21 @@ According to this approach, **5-grams** dictionary can be some kind of **overkil
 
 ## Handling Unseen N-grams
 
-If something entered by user is out of dictionary scope. Than it should be cleaned up and registered in dictionary. So probability/frequency should be choosed for new items.
+If something entered by user can't be found in dictionary, following exceptional cases exist:
+
+1. It's really unseen n-gram.
+2. Some words contain misprints (but can be found in normal form).
+3. The last entered word is uncomplete. And user wants the application to propose appropriate word completions.
+
+The first question - how to distinguish between these cases?
+
+The only reliable way (as I can see) is based on "help" from user. If the last character is whitespace, the third case (uncomplete last word) should be discarded. But it's not user-friendly.
+
+Any automatical approach? I think in most cases it will be enough to check the last entered word in dictionary. If such unigram does not exist, entered text should be considered without last word.
+
+Other question is related to misprints/typos. Different string metrics can be used. For example: *Q-gram*, *Jaccard*, *Cosine*. Unfortunately this approach can't be mixed this Kneser-Ney smoothing (at least it's very hard task), because all probabilities should be recomputed according to choosen metric.
+
+## Probabilities Smoothing
 
 > There are problems of balance weight between infrequent grams (for example, if a proper name appeared in the training data) and frequent grams. Also, items not seen in the training data will be given a probability of 0.0 without smoothing. For unseen but plausible data from a sample, one can introduce pseudocounts. Pseudocounts are generally motivated on Bayesian grounds.
 
@@ -135,21 +149,22 @@ Different *smoothing* approaches exist:
 * Katz's back-off model (trigram).
 * Kneser–Ney smoothing.
 
+The most effective and universal approach (according to different sources) - is *Kneser-Ney*. It will be considered in this project.
+
 ## Simple Prediction Model
 
-Let's start with some simple model. Without counts smoothing.
+Let's start with some simple model.
 
 ### Model Overview
 
 Algorithm steps:
 
-0. Order n-gram dictionary by frequency.
 1. Clean up provided query (the same way corpora has been cleaned up).
 2. Tokenize and compute number of words.
 3. Choose *n* (for *n-gram*) equals to number of words plus one word.
-4. Search for appropriate *n-grams*.
+4. Search for appropriate *n-grams* and order results from common (high frequency, or high probability) to rare.
 5. If nothing found (or less than some coefficient), remove first word from query, and go to the step 3.
-6. Extract last words from found *n-grams* and order them by frequency.
+6. Last words of found *n-grams* represent the prediciton result.
 
 ```{r, echo=F, message=F, warning=F}
 source("../common/predict-next-words.R", chdir=T)
@@ -233,11 +248,14 @@ Accuracy (percent):
 ```{r}
 format(EstimatePredictorAccuracy(PredictNextWords,
                                  train.freq.table,
-                                 test.freq.table) * 100,
+                                 test.freq.table[sample(1:nrow(test.freq.table),
+                                                        size=100)]) * 100,
        digits=3L)
 ```
 
 ### Simple Model Quiz
+
+Quiz has been taken from *Coursera*.
 
 ```{r}
 test.quiz.1 <- list("The guy in front of me just bought a pound of bacon, a bouquet, and a case of" = c("pretzels", "soda", "beer", "cheese"),
@@ -261,10 +279,9 @@ TestPredictorAgainstQuiz <- function(predictor, train.freq.table,
         next.words.freq.table <- predictor(ngram.freq=train.freq.table,
                                            query.text=query,
                                            max.ngram.count=max.ngram.count)
-        return(next.words.freq.table[, .(next.words=intersect(last.word,
-                                                              expected.next.words),
-                                         rating.position=which(last.word %in%
-                                                                   expected.next.words))])
+        rating.position <- next.words.freq.table[, which(last.word %in% expected.next.words)]
+        return(data.table(next.words=next.words.freq.table[rating.position, last.word],
+                          rating.position=rating.position))
     })
     names(res) <- names(test.quiz)
     return(res)
@@ -279,6 +296,8 @@ print(simple.predict.quiz.result)
 ```
 
 ## Kneser-Ney Based Model
+
+Lets try Kneser-Ney smoothing.
 
 > Kneser-Ney evolved from absolute-discounting interpolation, which makes use of both higher-order (i.e., higher-n) and lower-order language models, reallocating some probability mass from 4-grams or 3-grams to simpler unigram models.
 
@@ -341,12 +360,14 @@ print(kn.predict.quiz.result)
 
 ```{r}
 ComparePredictorsByQuiz <- function(quiz.result.a, quiz.result.b) {
-    return(lapply(names(quiz.result.a), function(query) {
+    res <- lapply(names(quiz.result.a), function(query) {
         a <- quiz.result.a[[query]][1]
         b <- quiz.result.b[[query]][1]
         return(data.frame(a=a$next.words, b=b$next.words,
                           rating.delta=a$rating.position - b$rating.position))
-    }))
+    })
+    names(res) <- names(quiz.result.a)
+    return(res)
 }
 ```
 
@@ -356,4 +377,27 @@ ComparePredictorsByQuiz(simple.predict.quiz.result, kn.predict.quiz.result)
 
 Delta rating field shows difference in prediction result position between simple predictor and Kneser-Ney based predictor. The closer position to the begining of the list, the better algorithm.
 
-According to comparison results Kneser-Ney smoothing has no effect in most cases.
+According to comparison results, Kneser-Ney smoothing has no effect in most cases.
+
+## Conclusions
+
+1. In case of misprints/typos different string metrics can be used (*Q-gram*, *Jaccard*, *Cosine*).
+2. Unseen word entered by user at the end of the text can be considered as uncomplete and ignored by algorithm.
+3. Sometimes Kneser-Ney smoothing is better than nothing.
+
+## Links
+
+### Theory
+
+1. [N-gram](https://en.wikipedia.org/wiki/N-gram)
+2. [Knser-Ney Smoothing](https://en.wikipedia.org/wiki/Kneser%E2%80%93Ney_smoothing)
+3. [Good Turing Smoothing](https://en.wikipedia.org/wiki/Good%E2%80%93Turing_frequency_estimation)
+4. [Katz's back-off model](https://en.wikipedia.org/wiki/Katz%27s_back-off_model)
+
+### R Packages
+
+1. Fast and efficient data.frame extension -  [data.table](https://cran.r-project.org/web/packages/data.table/index.html)
+2. Text mining package - [tm](https://cran.r-project.org/web/packages/tm/index.html)
+3. Collection of machine learning algorithms -  [RWeka](https://cran.r-project.org/web/packages/RWeka/index.html)
+4. String processing facilities - [stringi](https://cran.r-project.org/web/packages/stringi/index.html)
+5. String distance functions - [stringdist](https://cran.r-project.org/web/packages/stringdist/index.html)

@@ -8,15 +8,13 @@ source("common/kneser-ney.R", chdir=T)
 
 shinyServer(function(input, output) {
     kn.train.freq.table <- readRDS("basic-modeling/output/kn.train.freq.table.rds")
+    setkey(kn.train.freq.table, first.words, last.word, n)
     
-    inTokenizedQuery <- reactive({
-        TokenizeQuery(input$query)
-    })
     inStringEqStrategy <- reactive({
-        metric <- input$stringDistanceMetric
-        th <- input$stringDistanceThreshold / 100
+        metric <- input$stringMetric
+        th <- input$stringMetricThreshold / 100
         if ("eq" == metric) {
-            return(StringEq)
+            return(stri_cmp_eq)
         } else {
             return(function(a, b) stringdist(a, b, method=metric) <= th)
         }
@@ -38,7 +36,7 @@ shinyServer(function(input, output) {
         format(nrow(kn.train.freq.table), big.mark=" ")
     })
     output$cleanedQuery <- renderText({
-        paste(inTokenizedQuery(), collapse=" ")
+        CleanQuery(input$query)
     })
     output$query <- renderText({
         paste(input$query, ": ", sep="")

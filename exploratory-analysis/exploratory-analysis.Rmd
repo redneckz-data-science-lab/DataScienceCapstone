@@ -54,15 +54,15 @@ Data looks like simple text files. Each line inside text file represents individ
 Sizes, line couts, and word counts.
 
 ```{r, echo=F, warning=F, message=F}
-library("stringi")
+library("stringi", quietly=T)
 ```
 ```{r}
 GetTextFileStat <- function(file.path) {
     size.mb <- round(file.info(file.path)$size / 1024 / 1024)
     lines <- readLines(file.path, warn=F, skipNul=T)
     word.count <- sum(stri_count_words(lines))
-    return(list(size.mb=size.mb, line.count=length(lines), 
-                word.count=word.count))
+    return(list("Size (Mb)"=size.mb, "Line count"=length(lines), 
+                "Word count"=word.count))
 }
 ```
 
@@ -102,14 +102,16 @@ if (!file.exists("./output/en_US.twitter.txt.stat.rds")) {
 print(en_US.twitter.txt.stat)
 ```
 
-## Sampling And Cleaning
+## Cleaning and Sampling
 
-Accroding to the file's statistics, data is too big to handle it in memory. So data should be joined in one corpus and sampled before any analysis.
-Also data should be cleaned out of the meaningless parts. For example, punctation and stop words (is, are, the, a) are not relevant to the word prediction task.
+Data should be cleaned out of the meaningless parts. For example, punctation and stop words (is, are, the, a) are not relevant to the word prediction task.
 Following should be cleaned: punctation, numbers, stop wrods, profanity words, swear words, URLs, emails, accounts.
 
+Accroding to the file's statistics, data is too big to handle it in memory. So data should be sampled before any analysis.
+
+According to **holdout method**. Combined data should be split up into groups: **training** and **test**. More complicated techniques, like **k-fold**, need much more time and memory. But to pave the way for such techniques, data should be split up into small pieces/chunks while cleaning.
+
 ```{r, echo=F, warning=F, message=F}
-source("../common/read-sentences.R", chdir=T)
 source("../common/clean-corpus.R", chdir=T)
 source("../common/partitioned-corpus.R", chdir=T)
 ```
@@ -129,9 +131,6 @@ PartitionCorpus(in.dir="./input/", out.dir="./output/cleaned-corpus",
                 })
 ```
 
-According to **holdout method**, combined data, should be split into three groups: **training**, **validation**, and **test** corpus.
-More complicated techniques, like **k-fold**, need much more time and memory.
- 
 ## N-gram's Frequencies
 
 > *N-gram* is a contiguous sequence of n items from a given sequence of text.
@@ -144,8 +143,10 @@ N-gram's frequencies can help:
 * To optimize dictionaries or other structures used in word prediction.
 * As part of simple word prediction model.
 
+Lets compute term-document matrix and n-gram frequency table for each chunk. Then combine 5% of them for further analysis.
+
 ```{r, echo=F, warning=F, message=F}
-library("RWeka")
+library("RWeka", quietly=T)
 ```
 
 ```{r}
@@ -180,7 +181,7 @@ summary(train.freq.table)
 Unigram - separate word.
 
 ```{r, echo=F, warning=F, message=F}
-library("ggplot2")
+library("ggplot2", quietly=T)
 ```
 
 ```{r}
@@ -264,24 +265,6 @@ plot(x=1:length(dictionary.size.to.coverage),
 
 It's evident from the plot that coverage has logarithmic dependency on dictionary size. To make better predictions dictionary may be reduced and cleaned from very rare or occasional words and phrases.
 
-How many words covers **90%** of corpora?
-
-```{r}
-print(which(dictionary.size.to.coverage > 90)[[1]])
-```
-
-How many words covers **80%** of corpora?
-
-```{r}
-print(which(dictionary.size.to.coverage > 80)[[1]])
-```
-
-How many words covers **70%** of corpora?
-
-```{r}
-print(which(dictionary.size.to.coverage > 70)[[1]])
-```
-
 ### Stemming
 
 > Stemming is the process of reducing inflected (or sometimes derived) words to their word stem, base or root form—generally a written word form
@@ -302,13 +285,13 @@ Another way is to use heuristic techniques. For example, *Good-Turing*.
 In other words, probability of unseen terms is estimated from already known frequencies distribution (using binomial ditribution assumption).
 
 ```{r, echo=F, warning=F, message=F}
-library("edgeR")
+library("edgeR", quietly=T)
 ```
 
 Probability of unseen unigram:
 
 ```{r}
-print(goodTuring(unigram.freq$freq)$P0)
+paste(round(goodTuring(unigram.freq$freq)$P0 * 100, 2), "%")
 ```
 
 Probability is very low. Some rough estimation is needed.
@@ -327,11 +310,28 @@ So language coverage could be astimated as **less** than corpus coverage for abo
 
 ## Conclusions
 
-0. Significant part of dictionary consists of very rare words. So dictionary can be reduced.
-1. For about **6 thousand words** is enough to cover **80%** of corpora.
-2. Most efficient model could cover only **`r round(100/lang.cov.vs.corpus.cov)`%** of the language.
-3. Stemming can help to increase coverage. But this is complicated technique.
+1. Significant part of dictionary consists of very rare words. So dictionary can be reduced.
+2. Corpus coverage has logarithmic dependency on dictionary size.
+3. Most efficient model could cover only **~`r round(100/lang.cov.vs.corpus.cov)`%** of the language.
+4. Stemming can help to increase coverage. But this is complicated technique.
 
-## Further Analysis
+## Links
+
+### Further Analysis
 
 Basic modeling report is located [here](http://rpubs.com/redneckz/smart-keyboard-basic-modeling).
+
+### Theory
+
+1. [N-gram](https://en.wikipedia.org/wiki/N-gram)
+2. [Knser-Ney Smoothing](https://en.wikipedia.org/wiki/Kneser%E2%80%93Ney_smoothing)
+3. [Good Turing Smoothing](https://en.wikipedia.org/wiki/Good%E2%80%93Turing_frequency_estimation)
+4. [Katz's back-off model](https://en.wikipedia.org/wiki/Katz%27s_back-off_model)
+
+### R Packages
+
+1. Fast and efficient data.frame extension -  [data.table](https://cran.r-project.org/web/packages/data.table/index.html)
+2. Text mining package - [tm](https://cran.r-project.org/web/packages/tm/index.html)
+3. Collection of machine learning algorithms -  [RWeka](https://cran.r-project.org/web/packages/RWeka/index.html)
+4. String processing facilities - [stringi](https://cran.r-project.org/web/packages/stringi/index.html)
+5. String distance functions - [stringdist](https://cran.r-project.org/web/packages/stringdist/index.html)

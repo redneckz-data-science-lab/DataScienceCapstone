@@ -25,19 +25,19 @@ shinyUI(fluidPage(
     ),
     sidebarLayout(
         sidebarPanel(
-            selectInput("resultViewMode", label="Result view mode", 
+            selectInput("resultViewMode", label="Result View Mode", 
                         choices=list("Text"=1, "Plot"=2, "Table"=3), 
                         selected=1),
-            sliderInput("maxResultCount", label="Max result count",
+            sliderInput("maxResultCount", label="Max Result Count",
                         min=10, max=100, value=25, step=10),
-            checkboxInput("kneser", label="Kneser-Ney smoothing", value=F),
+            checkboxInput("kneser", label="Kneser-Ney Smoothing", value=F),
             conditionalPanel(condition="!input.kneser",
-                selectInput("stringDistanceMetric", label="Str. distance metric", 
+                selectInput("stringMetric", label="String Metric", 
                             choices=list("Equality"="eq", "Q-gram"="qgram",
                                          "Cosine"="cosine", "Jaccard"="jaccard"), 
                             selected="eq"),
-                conditionalPanel(condition="input.stringDistanceMetric != 'eq'",
-                    sliderInput("stringDistanceThreshold", label="Str. distance threshold",
+                conditionalPanel(condition="input.stringMetric != 'eq'",
+                    sliderInput("stringMetricThreshold", label="Str. Metric Threshold",
                                 min=0, max=50, value=0, step=1, post="%")
                 )
             ),
@@ -62,14 +62,14 @@ shinyUI(fluidPage(
         column(width=6,
                h4("Reports"),
                tags$ol(
-                   tags$li(tags$a("Smart Keyboard Exploratory Data Analysis Report",
+                   tags$li(tags$a("Exploratory Data Analysis Report",
                                   href="http://rpubs.com/redneckz/smart-keyboard-exploratory-data-analysis")),
-                   tags$li(tags$a("Smart Keyboard Basic Modeling Report",
+                   tags$li(tags$a("Basic Modeling Report",
                                   href="http://rpubs.com/redneckz/smart-keyboard-basic-modeling"))
                )
         ),
         column(width=6,
-               h4("Useful Links"),
+               h4("Links"),
                tags$ol(
                    tags$li("Fast and efficient data.frame extension -",
                            tags$a("data.table",

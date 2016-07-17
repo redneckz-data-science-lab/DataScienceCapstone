@@ -4,6 +4,7 @@
         read <- function(in.file.path) map.f(readRDS(in.file.path))
         acc <- read(head(partition.files, 1L))
         for (in.file.path in tail(partition.files, -1L)) {
+            print(in.file.path)
             acc <- reduce.f(acc, read(in.file.path))
         }
         return(acc)

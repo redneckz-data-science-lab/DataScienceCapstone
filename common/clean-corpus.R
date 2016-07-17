@@ -27,4 +27,9 @@
                                 content_transformer(tolower))
         return(tm_map(corpus, FUN=tm_reduce, tmFuns=transformations))
     }
+    
+    CleanQuery <<- function(query.text) {
+        cleaned.query.corpus <- CleanCorpus(VCorpus(VectorSource(query.text)))
+        return(cleaned.query.corpus[[1L]]$content)
+    }
 })()

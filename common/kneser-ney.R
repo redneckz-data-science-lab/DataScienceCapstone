@@ -13,7 +13,7 @@
 
     SmoothNgramFreqTableByKneserNey <<- function(ngram.freq.table, delta=0.75) {
         ngram.freq.table[, p.kn := 0]
-        setkey(ngram.freq.table, first.words, last.word)
+        setkey(ngram.freq.table, first.words, last.word, n)
         SmoothNgrams(ngram.freq.table, delta)
         return(ngram.freq.table)
     }

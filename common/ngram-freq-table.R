@@ -24,7 +24,7 @@
                                          stri_sub(terms, from=index + 1L))]
         ngram.freq[, n := stri_count_words(terms)]
         ngram.freq[, i := NULL]
-        setkey(ngram.freq, first.words, last.word)
+        setkey(ngram.freq, first.words, last.word, n)
         return(ngram.freq)
     }
     

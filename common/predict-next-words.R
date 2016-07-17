@@ -6,11 +6,17 @@
     PredictNextWords <<- function(ngram.freq, query.text,
                                   query.tokenize.strategy=TokenizeQuery,
                                   query.variate.strategy=VariateQueryByBackOff,
-                                  string.eq.strategy=StringEq,
+                                  string.eq.strategy=stri_cmp_eq,
                                   ordering.strategy=OrderByFreq,
                                   result.prepare.strategy=identity,
                                   max.ngram.count=10L) {
-        query.variants <- query.variate.strategy(query.tokenize.strategy(query.text))
+        if (is.null(ngram.freq) || is.null(query.text) ||
+                stri_isempty(stri_trim(query.text))) {
+            return(result.prepare.strategy(data.table()))
+        }
+        query.words <- query.tokenize.strategy(query.text)
+        query.words <- RemoveLastUncompleteWord(ngram.freq, query.words)
+        query.variants <- query.variate.strategy(query.words)
         result <- Reduce(function(result, query) {
             if (nrow(result) < max.ngram.count) {
                 return(rbind(result, FindNGramsByQuery(ngram.freq, query,
@@ -33,21 +39,28 @@
         }
         target.n <- length(query.words) + 1L
         target.query <- paste(query.words, collapse=" ")
-        result <- ordering.strategy(ngram.freq[target.n == n][string.eq.strategy(target.query,
-                                                                                 first.words)])
+        result <- ordering.strategy(ngram.freq[(target.n == n) &
+                                                   string.eq.strategy(target.query,
+                                                                      first.words)])
         return(head(result, max.ngram.count))
     }
     
-    TokenizeQuery <<- function(query.text) {
-        cleaned.query.corpus <- CleanCorpus(VCorpus(VectorSource(query.text)))
-        cleaned.query.text <- cleaned.query.corpus[[1L]]$content
+    TokenizeQuery <- function(query.text) {
+        cleaned.query.text <- CleanQuery(query.text)
         return(stri_extract_all_words(cleaned.query.text)[[1L]])
     }
     
-    VariateQueryByBackOff <<- function(query, max.n=4L) Map(function(i) tail(query, i),
-                                                            min(max.n, length(query)):1)
+    RemoveLastUncompleteWord <- function(ngram.freq, query.words) {
+        target.last.word <- tail(query.words, 1L)
+        if (ngram.freq[(n == 2L) & (target.last.word == last.word), .N] > 0L) {
+            return(query.words)
+        } else {
+            return(head(query.words, -1L))
+        }
+    }
     
-    StringEq <<- function(a, b) a == b
+    VariateQueryByBackOff <- function(query, max.n=4L) Map(function(i) tail(query, i),
+                                                           min(max.n, length(query)):1)
     
     OrderByFreq <- function(ngram.freq) ngram.freq[order(-freq)]
 })()

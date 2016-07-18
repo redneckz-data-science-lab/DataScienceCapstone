@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="utf-8">
-  <title>Smart Keyboard</title>
+  <title>Data Science Capstone > Smart Keyboard</title>
     
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -749,14 +749,38 @@ hljs.initHighlightingOnLoad();
   <div class="slides">
 
 <section data-state="section" data-transition="linear" data-transition-speed="default">
-<h1>Smart Keyboard</h1><p>Alexander Alexandrov<br/>Thursday, July 07, 2016</p>
+<h1>Data Science Capstone &gt; Smart Keyboard</h1><p>Alexander Alexandrov<br/>Thursday, July 07, 2016</p>
 
 <div class="slideContent" >
-<p>Smart keyboard makes it easier for people to type on their mobile devices. One cornerstone of smart keyboard is predictive text models.</p>
+<p><strong>Smart Keyboard</strong> makes it easier for people to type on their mobile devices. One cornerstone of smart keyboard is predictive text models.</p>
 
 <p>When someone types: <strong>I went to the</strong></p>
 
 <p>The keyboard presents several options: <strong>gym, store, restaurant</strong></p>
+
+</div>
+
+</section>
+<section data-transition="linear" data-transition-speed="default">
+<h3>Smart Keyboard App</h3>
+<div class="slideContent" >
+<p><a href="https://redneckz.shinyapps.io/DataScienceCapstone/">Please check it out here</a>.</p>
+
+<p>Manual:</p>
+
+<ol>
+<li>Wait dictionary load in <strong>~5 sec</strong>.</li>
+<li>Enter some text and explore results in <strong>&lt; 1 sec</strong>.</li>
+</ol>
+
+<p>Features:</p>
+
+<ol>
+<li>Fast and memory efficient <strong>&lt; 150 Mb</strong>.</li>
+<li>Mobile oriented.</li>
+<li>Different <strong>Result View Modes</strong>.</li>
+<li>Different <strong>String Metrics</strong> to deal with typos.</li>
+</ol>
 
 </div>
 
@@ -796,7 +820,7 @@ hljs.initHighlightingOnLoad();
 
 <p>Data was cleaned from punctation, numbers, stop wrods, profanity words, swear words, URLs, emails, accounts. Because such stuff does not make sense in context of word prediction.</p>
 
-<p>Algorithm is based on n-gram frequency dictionary. According to exploratory analysis dictionary has been cleaned from rare n-grams to reduce memory usage and increase performance.</p>
+<p>Algorithm is based on <strong>n-gram frequency dictionary</strong>. According to the exploratory analysis dictionary has been cleaned from rare n-grams to reduce memory usage and increase performance.</p>
 
 </div>
 
@@ -813,28 +837,7 @@ hljs.initHighlightingOnLoad();
 <li>Last words of found <em>n-grams</em> represent the prediciton result.</li>
 </ol>
 
-</div>
-
-</section>
-<section data-transition="linear" data-transition-speed="default">
-<h3>Shiny App</h3>
-<div class="slideContent" >
-<p><a href="https://redneckz.shinyapps.io/DataScienceCapstone/">Shiny App</a></p>
-
-<p>Features:</p>
-
-<ol>
-<li><strong>Result View Modes</strong>.</li>
-<li><strong>Kneser-Ney</strong> smoothing.</li>
-<li><strong>String Metrics</strong> to deal with typos.</li>
-</ol>
-
-<p>Manual:</p>
-
-<ol>
-<li>Wait dictionary load in <strong>~5 sec</strong>.</li>
-<li>Eneter some text and explore results in <strong>&lt; 1 sec</strong>.</li>
-</ol>
+<p><em>Kneser-Ney</em> was used for <em>n-gram</em> frequency smoothing.</p>
 
 </div>
 

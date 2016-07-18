@@ -38,9 +38,6 @@ shinyServer(function(input, output) {
     output$cleanedQuery <- renderText({
         CleanQuery(input$query)
     })
-    output$query <- renderText({
-        paste(input$query, ": ", sep="")
-    })
     output$result <- renderText({
         paste(inPredictionResult()[, last.word], collapse=", ")
     })

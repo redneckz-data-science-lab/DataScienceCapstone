@@ -12,8 +12,11 @@
                                   max.ngram.count=10L) {
         if (is.null(ngram.freq) || is.null(query.text) ||
                 stri_isempty(stri_trim(query.text))) {
-            return(result.prepare.strategy(data.table()))
+            return(result.prepare.strategy(FindTopUnigrams(ngram.freq,
+                                                           ordering.strategy,
+                                                           max.ngram.count)))
         }
+        
         query.words <- query.tokenize.strategy(query.text)
         query.words <- RemoveLastUncompleteWord(ngram.freq, query.words)
         query.variants <- query.variate.strategy(query.words)
@@ -27,7 +30,14 @@
                 return(result)
             }
         }, query.variants, init=data.table())
-        return(result.prepare.strategy(result))
+        
+        if (nrow(result) > 0) {
+            return(result.prepare.strategy(result))
+        } else {
+            return(result.prepare.strategy(FindTopUnigrams(ngram.freq,
+                                                           ordering.strategy,
+                                                           max.ngram.count)))
+        }
     }
     
     FindNGramsByQuery <- function(ngram.freq, query.words,
@@ -43,6 +53,12 @@
                                                    string.eq.strategy(target.query,
                                                                       first.words)])
         return(head(result, max.ngram.count))
+    }
+    
+    FindTopUnigrams <- function(ngram.freq,
+                                ordering.strategy,
+                                max.unigram.count) {
+        return(head(ordering.strategy(ngram.freq[n == 1]), max.unigram.count))
     }
     
     TokenizeQuery <- function(query.text) {
